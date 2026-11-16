@@ -1,5 +1,6 @@
 # Leaf Disease Detection: Beyond In-Distribution Accuracy
 
+[![CI](https://github.com/tajammulbasheer/plant_leaf_disease_detection/actions/workflows/ci.yml/badge.svg)](https://github.com/tajammulbasheer/plant_leaf_disease_detection/actions/workflows/ci.yml)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_disease_detection/blob/main/notebooks/train_on_colab.ipynb)
 
 Plant disease classification on the full **PlantVillage** dataset (38 classes, 14 crops), plus four
@@ -36,9 +37,10 @@ experiment outputs. Nothing here is typed by hand.
 | Few-shot | 20 | 0.9517 | 0.9406 | 25/25 |
 | Semi-supervised | 20 + pseudo-labels | 0.9741 | 0.9728 | 25/25 |
 
-![Validation accuracy and macro-F1 by training mode](assets/classifier_modes.png)
-
-![Validation macro-F1 per epoch](assets/training_curves.png)
+<p align="center">
+  <img src="assets/classifier_modes.png" width="49%" alt="Validation accuracy and macro-F1 by training mode" />
+  <img src="assets/training_curves.png" width="49%" alt="Validation macro-F1 per epoch" />
+</p>
 
 ### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)
 
@@ -49,11 +51,12 @@ experiment outputs. Nothing here is typed by hand.
 
 Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' has no PlantDoc equivalent and is excluded from this OOD eval.*
 
-![Accuracy drop from lab photos to real field photos](assets/cross_dataset.png)
+<p align="center"><img src="assets/cross_dataset.png" width="70%" alt="Accuracy drop from lab photos to real field photos" /></p>
 
-![confusion plantvillage](assets/confusion_plantvillage.png)
-
-![confusion plantdoc](assets/confusion_plantdoc.png)
+<p align="center">
+  <img src="assets/confusion_plantvillage.png" width="48%" alt="Confusion matrix: PlantVillage (in-distribution)" />
+  <img src="assets/confusion_plantdoc.png" width="48%" alt="Confusion matrix: PlantDoc (field photos)" />
+</p>
 
 ### Class-incremental few-shot learning (Apple classes)
 
@@ -62,9 +65,11 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 | Naive fine-tuning | 0.3341 | 0.9989 |
 | Replay + distillation | 0.5173 | 0.4146 |
 
-![Final accuracy and forgetting for each strategy](assets/incremental.png)
-
-![Per-task accuracy matrix](assets/incremental_matrix.png)
+<p align="center">
+  <img src="assets/incremental.png" width="48%" alt="Final accuracy and forgetting for each strategy" />
+  <img src="assets/incremental_matrix.png" width="50%" alt="Per-task accuracy matrix" />
+</p>
+<p align="center"><img src="assets/incremental_combined.png" width="92%" alt="Class-incremental learning: strategy comparison and per-task accuracy matrix" /></p>
 
 ### Leaf segmentation (U-Net, Apple classes)
 
@@ -72,19 +77,29 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 |---|---|---|
 | 0.9771 | 0.9883 | 2854 / 317 |
 
-![U-Net leaf segmentation: input, ground truth, prediction](assets/seg_samples.png)
+<p align="center"><img src="assets/seg_samples.png" width="75%" alt="U-Net leaf segmentation: input, ground truth, prediction" /></p>
 
 *Training precision: fp32 for every run above.*
 
 ### Sample outputs
 
-![DCGAN: real Cedar apple rust (top) vs generated (bottom)](assets/gan_real_vs_generated.png)
+<p align="center"><img src="assets/gan_real_vs_generated.png" width="85%" alt="DCGAN: real Cedar apple rust (top) vs generated (bottom)" /></p>
+<p align="center"><img src="assets/gradcam_comparison.png" width="85%" alt="Weakly-supervised lesion localization across Apple disease classes" /></p>
 
-![Grad-CAM heatmap and pseudo bounding box (sample_0_Apple_scab)](assets/gradcam_0.png)
+<p align="center"><img src="assets/gradcam_0.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_0_Apple_scab)" /></p>
 
-![Grad-CAM heatmap and pseudo bounding box (sample_10_Apple_scab)](assets/gradcam_1.png)
-
-![Grad-CAM heatmap and pseudo bounding box (sample_11_Apple_scab)](assets/gradcam_2.png)
+<details>
+<summary><b>View more Grad-CAM localization samples</b></summary>
+<summary><b>Experimental: DCGAN Minority Class Synthesis (Cedar Apple Rust)</b></summary>
+<br/>
+<p align="center">
+  <img src="assets/gradcam_1.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_10_Apple_scab)" />
+  <br/><br/>
+  <img src="assets/gradcam_2.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_11_Apple_scab)" />
+</p>
+<p align="center"><img src="assets/gan_real_vs_generated.png" width="85%" alt="DCGAN: real Cedar apple rust (top) vs generated (bottom)" /></p>
+<p align="center"><i>Synthetic leaves generated at 64×64 resolution to address minority class scarcity. Retained as an experimental baseline.</i></p>
+</details>
 
 <!-- RESULTS:END -->
 
@@ -140,6 +155,7 @@ For a full local run on a CUDA GPU (one script, resumable, logs per step), see
 git clone https://github.com/tajammulbasheer/plant_leaf_disease_detection.git
 cd plant_leaf_disease_detection
 pip install -r requirements.txt
+pip install -e .
 python -m src.data.prepare_plantvillage --output-dir data --workdir . --cleanup-clone
 
 python -m src.training.train_classifier --data-dir data/plantvillage_full \
@@ -151,9 +167,34 @@ python -m src.utils.generate_report --run-dir runs --output-dir runs/report \
 
 Each script prints its options with `--help`.
 
+### Quick inference (single image)
+
+To run disease classification and optional Grad-CAM localization on any leaf photo:
+
+```bash
+# Top disease predictions
+python predict.py --image path/to/leaf.jpg --checkpoint runs/baseline_full/best_model.pt
+
+# Top predictions + Grad-CAM heatmap & pseudo bounding box visualization
+python predict.py --image path/to/leaf.jpg --checkpoint runs/baseline_full/best_model.pt --cam
+```
+
+### Interactive web demo (Gradio)
+
+Launch the interactive local web app with drag-and-drop leaf image testing, real-time disease diagnosis, Grad-CAM attention heatmap visualization, and 1-click sample images:
+
+```bash
+pip install gradio
+python app.py
+```
+
 ## Repository structure
 
 ```
+app.py                          interactive Gradio web demo (diagnosis & Grad-CAM visualizer)
+predict.py                      single-image inference CLI with optional Grad-CAM overlay
+pyproject.toml                  package metadata and standard editable installation (pip install -e .)
+samples/                        sample leaf photos for 1-click testing in the web demo
 src/
   data/
     dataset.py                 class-folder dataset, few-shot sampling, transforms, seeding

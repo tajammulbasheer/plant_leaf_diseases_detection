@@ -1,0 +1,25 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# Enforce LF endings on shell scripts so they don't break in Linux/WSL
+*.sh text eol=lf
+
+# Python and config files
+*.py text diff=python
+*.md text
+*.txt text
+*.json text
+*.toml text
+*.yml text
+*.yaml text
+
+# Notebooks
+*.ipynb text merge=union
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pt binary
+*.pth binary
+

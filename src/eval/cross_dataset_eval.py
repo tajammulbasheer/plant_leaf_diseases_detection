@@ -39,7 +39,7 @@ def load_model(checkpoint_path, backbone, device):
     return model
 
 
-def plot_confusion(model, loader, device, class_names, title, save_path):
+def plot_confusion(model, loader, device, class_names, title, save_path, subtitle=""):
     all_preds, all_labels = [], []
     with torch.no_grad():
         for images, labels in loader:
@@ -50,12 +50,53 @@ def plot_confusion(model, loader, device, class_names, title, save_path):
     all_labels = torch.cat(all_labels).numpy()
 
     cm = confusion_matrix(all_labels, all_preds, labels=list(range(len(class_names))))
-    disp = ConfusionMatrixDisplay(cm, display_labels=[c.replace("Apple___", "") for c in class_names])
-    fig, ax = plt.subplots(figsize=(6, 6))
-    disp.plot(ax=ax, xticks_rotation=45, colorbar=False)
-    ax.set_title(title)
+    clean_classes = [c.replace("Apple___", "").replace("_", " ") for c in class_names]
+
+    from matplotlib.colors import LinearSegmentedColormap
+    import numpy as np
+
+    BLUE_RAMP = LinearSegmentedColormap.from_list(
+        "blue_ramp", ["#f8fafc", "#bfdbfe", "#3b82f6", "#1d4ed8", "#172554"]
+    )
+
+    fig, ax = plt.subplots(figsize=(5.5, 5.5), facecolor="white")
+    ax.set_facecolor("white")
+
+    im = ax.imshow(cm, interpolation="nearest", cmap=BLUE_RAMP)
+
+    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98, color="#0f172a")
+    if subtitle:
+        ax.set_title(subtitle, fontsize=10, color="#64748b", pad=10)
+
+    ax.set_xticks(range(len(clean_classes)))
+    ax.set_yticks(range(len(clean_classes)))
+    ax.set_xticklabels(clean_classes, fontsize=9.5, color="#1e293b", rotation=25, ha="right")
+    ax.set_yticklabels(clean_classes, fontsize=9.5, color="#1e293b")
+
+    ax.set_xlabel("Predicted Class", fontsize=10.5, fontweight="bold", color="#0f172a", labelpad=8)
+    ax.set_ylabel("True Class", fontsize=10.5, fontweight="bold", color="#0f172a", labelpad=8)
+
+    ax.set_xticks(np.arange(-0.5, len(clean_classes), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(clean_classes), 1), minor=True)
+    ax.grid(which="minor", color="#ffffff", linestyle="-", linewidth=2.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    ax.tick_params(which="major", length=0)
+
+    for spine in ax.spines.values():
+        spine.set_color("#cbd5e1")
+        spine.set_linewidth(1.2)
+
+    thresh = cm.max() * 0.45 if cm.max() > 0 else 1
+    for i in range(len(clean_classes)):
+        for j in range(len(clean_classes)):
+            val = cm[i, j]
+            color = "#ffffff" if val > thresh else "#0f172a"
+            weight = "bold" if val > 0 else "normal"
+            ax.text(j, i, f"{val}", ha="center", va="center",
+                    fontsize=11.5, fontweight=weight, color=color)
+
     fig.tight_layout()
-    fig.savefig(save_path, dpi=150)
+    fig.savefig(save_path, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none")
     plt.close(fig)
 
 
@@ -76,7 +117,8 @@ def run(args):
     pv_metrics = evaluate_classifier(model, pv_loader, device, APPLE_CLASSES)
     plot_confusion(
         model, pv_loader, device, APPLE_CLASSES,
-        "In-distribution (PlantVillage)", out_dir / "confusion_plantvillage.png",
+        "PlantVillage (In-Distribution)", out_dir / "confusion_plantvillage.png",
+        subtitle=f"Apple Subset · Val Accuracy: {pv_metrics['accuracy']*100:.1f}% ({len(pv_ds)}/{len(pv_ds)})",
     )
 
     # --- Out-of-distribution: PlantDoc ---
@@ -90,7 +132,8 @@ def run(args):
     pd_metrics = evaluate_classifier(model, pd_loader, device, APPLE_CLASSES)
     plot_confusion(
         model, pd_loader, device, APPLE_CLASSES,
-        "Out-of-distribution (PlantDoc)", out_dir / "confusion_plantdoc.png",
+        "PlantDoc (Field Photos · OOD)", out_dir / "confusion_plantdoc.png",
+        subtitle=f"Apple Subset · Accuracy: {pd_metrics['accuracy']*100:.1f}% ({int(round(pd_metrics['accuracy']*len(pd_ds)))}/{len(pd_ds)})",
     )
 
     results = {

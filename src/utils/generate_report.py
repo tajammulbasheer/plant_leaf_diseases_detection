@@ -178,17 +178,50 @@ def incremental_section(run_dir, assets, figs):
     if not r:
         return ("| Strategy | Final avg. accuracy | Avg. forgetting (lower is better) |\n|---|---|---|\n"
                 f"| Naive fine-tuning | {NOT_RUN} | — |\n| Replay + distillation | {NOT_RUN} | — |")
-    names = {"naive": "Naive fine-tuning", "replay_distill": "Replay + distillation"}
+    names = {"naive": "Naive Fine-Tuning", "replay_distill": "Replay + Distill"}
     present = [k for k in ("naive", "replay_distill") if k in r]
 
-    bar_chart([names[k] for k in present],
-              [("Final avg. accuracy", [r[k]["final_average_accuracy"] for k in present], BLUE),
-               ("Avg. forgetting", [r[k]["average_forgetting"] for k in present], ORANGE)],
-              "Class-incremental learning: accuracy vs. forgetting", assets / "incremental.png")
-    figs.append(("incremental.png", "Final accuracy and forgetting for each strategy"))
+    # Combined figure to ensure 100% height match across panels
+    from matplotlib.gridspec import GridSpec
+    fig = plt.figure(figsize=(12, 4.4), facecolor="white")
+    gs = GridSpec(1, 3, width_ratios=[1.3, 1.0, 1.0], wspace=0.35)
 
-    fig, axes = plt.subplots(1, len(present), figsize=(4.2 * len(present), 3.6), squeeze=False)
-    for ax, k in zip(axes[0], present):
+    ax_bar = fig.add_subplot(gs[0])
+    ax_m1 = fig.add_subplot(gs[1])
+    ax_m2 = fig.add_subplot(gs[2])
+
+    ax_bar.set_facecolor("white")
+    x = np.arange(len(present))
+    width = 0.32
+    accs = [r[k]["final_average_accuracy"] for k in present]
+    forgets = [r[k]["average_forgetting"] for k in present]
+
+    r1 = ax_bar.bar(x - width/2, accs, width, label="Final Avg. Accuracy", color=BLUE, zorder=3)
+    r2 = ax_bar.bar(x + width/2, forgets, width, label="Avg. Forgetting", color=ORANGE, zorder=3)
+
+    ax_bar.set_xticks(x)
+    ax_bar.set_xticklabels([names[k] for k in present], fontsize=9.5, fontweight="bold", color=TEXT)
+    ax_bar.set_ylabel("Score (0.0 – 1.0)", fontsize=10, color=TEXT, fontweight="bold", labelpad=6)
+    ax_bar.set_ylim(0, 1.15)
+    ax_bar.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.8, zorder=0)
+
+    for spine in ax_bar.spines.values():
+        spine.set_color("#cbd5e1")
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+
+    for rect in r1:
+        h = rect.get_height()
+        ax_bar.text(rect.get_x() + rect.get_width()/2, h + 0.02, f"{h:.2f}", ha="center", va="bottom", fontsize=9, fontweight="bold", color=TEXT)
+    for rect in r2:
+        h = rect.get_height()
+        ax_bar.text(rect.get_x() + rect.get_width()/2, h + 0.02, f"{h:.2f}", ha="center", va="bottom", fontsize=9, fontweight="bold", color=TEXT)
+
+    ax_bar.legend(frameon=True, facecolor="#f8fafc", edgecolor="#e2e8f0", fontsize=8.5, loc="upper right")
+    ax_bar.set_title("Strategy Performance", fontsize=11, fontweight="bold", color=TEXT, pad=8)
+
+    for ax, k in zip([ax_m1, ax_m2], present):
+        ax.set_facecolor("white")
         m = r[k]["accuracy_matrix"]
         t = len(m)
         vals = [[(v if v is not None and v == v else float("nan")) for v in row] for row in m]
@@ -197,21 +230,21 @@ def incremental_section(run_dir, assets, figs):
             for j in range(t):
                 v = vals[i][j]
                 if v == v:
-                    ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=9,
-                            color="#ffffff" if v > 0.6 else TEXT)
+                    ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=8.5,
+                            fontweight="bold", color="#ffffff" if v > 0.55 else TEXT)
         ax.set_xticks(range(t))
         ax.set_yticks(range(t))
-        ax.set_xticklabels([f"Task {j}" for j in range(t)])
-        ax.set_yticklabels([f"After {i}" for i in range(t)])
-        ax.set_title(names[k], loc="left")
+        ax.set_xticklabels([f"T{j+1}" for j in range(t)], fontsize=8.5, color=TEXT)
+        ax.set_yticklabels([f"Stage {i+1}" for i in range(t)], fontsize=8.5, color=TEXT)
+        ax.set_title(names[k], fontsize=10.5, fontweight="bold", color=TEXT, pad=8)
         for s in ax.spines.values():
-            s.set_visible(False)
-    fig.suptitle("Accuracy on each task after each training stage", x=0.02, ha="left",
-                 fontweight="bold", fontsize=12)
-    fig.tight_layout()
-    fig.savefig(assets / "incremental_matrix.png", dpi=160)
+            s.set_color("#cbd5e1")
+
+    fig.suptitle("Class-Incremental Learning: Strategy Comparison & Task Matrices",
+                 fontsize=12, fontweight="bold", color=TEXT, y=0.98)
+    fig.savefig(assets / "incremental_combined.png", dpi=200, bbox_inches="tight", facecolor="white")
     plt.close(fig)
-    figs.append(("incremental_matrix.png", "Per-task accuracy matrix"))
+    figs.append(("incremental_combined.png", "Class-incremental learning: strategy comparison and per-task accuracy matrix"))
 
     rows = "\n".join(
         f"| {names[k]} | {fmt(r[k]['final_average_accuracy'])} | {fmt(r[k]['average_forgetting'])} |"
@@ -231,13 +264,17 @@ def segmentation_section(run_dir, assets, figs):
 
 
 def samples_section(run_dir, assets, figs):
+    if (assets / "gradcam_comparison.png").exists():
+        figs.append(("gradcam_comparison.png", "Weakly-supervised lesion localization across Apple disease classes"))
     gan = run_dir / "gan_cedar_rust" / "real_vs_generated.png"
     if gan.exists():
         shutil.copy(gan, assets / "gan_real_vs_generated.png")
+    if (assets / "gan_real_vs_generated.png").exists():
         figs.append(("gan_real_vs_generated.png", "DCGAN: real Cedar apple rust (top) vs generated (bottom)"))
     cams = sorted((run_dir / "gradcam_boxes").glob("*.png"))[:3] if (run_dir / "gradcam_boxes").exists() else []
     for i, c in enumerate(cams):
-        shutil.copy(c, assets / f"gradcam_{i}.png")
+        if not (assets / f"gradcam_{i}.png").exists():
+            shutil.copy(c, assets / f"gradcam_{i}.png")
         figs.append((f"gradcam_{i}.png", f"Grad-CAM heatmap and pseudo bounding box ({c.stem})"))
 
 
@@ -266,26 +303,77 @@ def precision_note(run_dir):
 def build_markdown(sections, figs, asset_prefix):
     fig_lookup = {name: caption for name, caption in figs}
 
-    def img(name):
-        return f"![{fig_lookup[name]}]({asset_prefix}{name})\n" if name in fig_lookup else ""
+    def has(name):
+        return name in fig_lookup
+
+    def pair(name1, width1, name2, width2):
+        if has(name1) and has(name2):
+            return (
+                f'<p align="center">\n'
+                f'  <img src="{asset_prefix}{name1}" width="{width1}" alt="{fig_lookup[name1]}" />\n'
+                f'  <img src="{asset_prefix}{name2}" width="{width2}" alt="{fig_lookup[name2]}" />\n'
+                f'</p>\n'
+            )
+        elif has(name1):
+            return f'<p align="center"><img src="{asset_prefix}{name1}" width="{width1}" alt="{fig_lookup[name1]}" /></p>\n'
+        elif has(name2):
+            return f'<p align="center"><img src="{asset_prefix}{name2}" width="{width2}" alt="{fig_lookup[name2]}" /></p>\n'
+        return ""
+
+    def single(name, width="80%"):
+        if not has(name):
+            return ""
+        return f'<p align="center"><img src="{asset_prefix}{name}" width="{width}" alt="{fig_lookup[name]}" /></p>\n'
 
     cls_title, cls_table = sections["classifier"]
     md = [
-        f"### Classifier: {cls_title}\n", cls_table, "",
-        img("classifier_modes.png"), img("training_curves.png"),
+        f"### Classifier: {cls_title}\n",
+        cls_table,
+        "",
+        pair("classifier_modes.png", "49%", "training_curves.png", "49%"),
         "### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)\n",
-        sections["cross"], "", img("cross_dataset.png"),
-        img("confusion_plantvillage.png"), img("confusion_plantdoc.png"),
+        sections["cross"],
+        "",
+        single("cross_dataset.png", width="70%"),
+        pair("confusion_plantvillage.png", "48%", "confusion_plantdoc.png", "48%"),
         "### Class-incremental few-shot learning (Apple classes)\n",
-        sections["incremental"], "", img("incremental.png"), img("incremental_matrix.png"),
+        sections["incremental"],
+        "",
+        single("incremental_combined.png", width="92%") if has("incremental_combined.png") else pair("incremental.png", "48%", "incremental_matrix.png", "50%"),
         "### Leaf segmentation (U-Net, Apple classes)\n",
-        sections["segmentation"], "", img("seg_samples.png"),
+        sections["segmentation"],
+        "",
+        single("seg_samples.png", width="75%"),
     ]
+
     if sections.get("precision"):
         md += [sections["precision"], ""]
-    extras = [img(n) for n, _ in figs if n.startswith(("gan_", "gradcam_"))]
+
+    # Sample outputs: Grad-CAM and DCGAN
+    extras = []
+    if has("gradcam_comparison.png"):
+        g_cap = fig_lookup["gradcam_comparison.png"]
+        extras.append(f'<p align="center"><img src="{asset_prefix}gradcam_comparison.png" width="85%" alt="{g_cap}" /></p>\n')
+    else:
+        gradcams = [name for name, _ in figs if name.startswith("gradcam_")]
+        if gradcams:
+            primary = gradcams[0]
+            extras.append(f'<p align="center"><img src="{asset_prefix}{primary}" width="95%" alt="{fig_lookup[primary]}" /></p>\n')
+
+    if has("gan_real_vs_generated.png"):
+        gan_cap = fig_lookup["gan_real_vs_generated.png"]
+        extras.append(
+            f"<details>\n"
+            f"<summary><b>Experimental: DCGAN Minority Class Synthesis (Cedar Apple Rust)</b></summary>\n"
+            f"<br/>\n"
+            f'<p align="center"><img src="{asset_prefix}gan_real_vs_generated.png" width="85%" alt="{gan_cap}" /></p>\n'
+            f'<p align="center"><i>Synthetic leaves generated at 64×64 resolution to address minority class scarcity. Retained as an experimental baseline.</i></p>\n'
+            f"</details>\n"
+        )
+
     if extras:
         md += ["### Sample outputs\n"] + extras
+
     return "\n".join(line for line in md if line is not None)
 
 
