@@ -267,7 +267,7 @@ def samples_section(run_dir, assets, figs):
     if (assets / "gradcam_comparison.png").exists():
         figs.append(("gradcam_comparison.png", "Weakly-supervised lesion localization across Apple disease classes"))
     gan = run_dir / "gan_cedar_rust" / "real_vs_generated.png"
-    if gan.exists():
+    if gan.exists() and not (assets / "gan_real_vs_generated.png").exists():
         shutil.copy(gan, assets / "gan_real_vs_generated.png")
     if (assets / "gan_real_vs_generated.png").exists():
         figs.append(("gan_real_vs_generated.png", "DCGAN: real Cedar apple rust (top) vs generated (bottom)"))
@@ -334,16 +334,16 @@ def build_markdown(sections, figs, asset_prefix):
         "### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)\n",
         sections["cross"],
         "",
-        single("cross_dataset.png", width="70%"),
-        pair("confusion_plantvillage.png", "48%", "confusion_plantdoc.png", "48%"),
+        single("cross_dataset.png", width="48%"),
+        pair("confusion_plantvillage.png", "36%", "confusion_plantdoc.png", "36%"),
         "### Class-incremental few-shot learning (Apple classes)\n",
         sections["incremental"],
         "",
-        single("incremental_combined.png", width="92%") if has("incremental_combined.png") else pair("incremental.png", "48%", "incremental_matrix.png", "50%"),
+        single("incremental_combined.png", width="82%") if has("incremental_combined.png") else pair("incremental.png", "48%", "incremental_matrix.png", "50%"),
         "### Leaf segmentation (U-Net, Apple classes)\n",
         sections["segmentation"],
         "",
-        single("seg_samples.png", width="75%"),
+        single("seg_samples.png", width="48%"),
     ]
 
     if sections.get("precision"):
@@ -353,7 +353,7 @@ def build_markdown(sections, figs, asset_prefix):
     extras = []
     if has("gradcam_comparison.png"):
         g_cap = fig_lookup["gradcam_comparison.png"]
-        extras.append(f'<p align="center"><img src="{asset_prefix}gradcam_comparison.png" width="85%" alt="{g_cap}" /></p>\n')
+        extras.append(f'<p align="center"><img src="{asset_prefix}gradcam_comparison.png" width="55%" alt="{g_cap}" /></p>\n')
     else:
         gradcams = [name for name, _ in figs if name.startswith("gradcam_")]
         if gradcams:
@@ -366,7 +366,7 @@ def build_markdown(sections, figs, asset_prefix):
             f"<details>\n"
             f"<summary><b>Experimental: DCGAN Minority Class Synthesis (Cedar Apple Rust)</b></summary>\n"
             f"<br/>\n"
-            f'<p align="center"><img src="{asset_prefix}gan_real_vs_generated.png" width="85%" alt="{gan_cap}" /></p>\n'
+            f'<p align="center"><img src="{asset_prefix}gan_real_vs_generated.png" width="65%" alt="{gan_cap}" /></p>\n'
             f'<p align="center"><i>Synthetic leaves generated at 64×64 resolution to address minority class scarcity. Retained as an experimental baseline.</i></p>\n'
             f"</details>\n"
         )

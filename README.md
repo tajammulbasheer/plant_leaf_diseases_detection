@@ -1,7 +1,9 @@
 # Leaf Disease Detection: Beyond In-Distribution Accuracy
 
-[![CI](https://github.com/tajammulbasheer/plant_leaf_disease_detection/actions/workflows/ci.yml/badge.svg)](https://github.com/tajammulbasheer/plant_leaf_disease_detection/actions/workflows/ci.yml)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_disease_detection/blob/main/notebooks/train_on_colab.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_diseases_detection/blob/main/notebooks/train_on_colab.ipynb)
+<!-- Uncomment after adding .github/workflows/ci.yml to GitHub:
+[![CI](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml/badge.svg)](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml)
+-->
 
 Plant disease classification on the full **PlantVillage** dataset (38 classes, 14 crops), plus four
 experiments that test what a near-perfect PlantVillage score actually means:
@@ -51,11 +53,11 @@ experiment outputs. Nothing here is typed by hand.
 
 Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' has no PlantDoc equivalent and is excluded from this OOD eval.*
 
-<p align="center"><img src="assets/cross_dataset.png" width="70%" alt="Accuracy drop from lab photos to real field photos" /></p>
+<p align="center"><img src="assets/cross_dataset.png" width="48%" alt="Accuracy drop from lab photos to real field photos" /></p>
 
 <p align="center">
-  <img src="assets/confusion_plantvillage.png" width="48%" alt="Confusion matrix: PlantVillage (in-distribution)" />
-  <img src="assets/confusion_plantdoc.png" width="48%" alt="Confusion matrix: PlantDoc (field photos)" />
+  <img src="assets/confusion_plantvillage.png" width="36%" alt="Confusion matrix: PlantVillage (in-distribution)" />
+  <img src="assets/confusion_plantdoc.png" width="36%" alt="Confusion matrix: PlantDoc (field photos)" />
 </p>
 
 ### Class-incremental few-shot learning (Apple classes)
@@ -65,11 +67,7 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 | Naive fine-tuning | 0.3341 | 0.9989 |
 | Replay + distillation | 0.5173 | 0.4146 |
 
-<p align="center">
-  <img src="assets/incremental.png" width="48%" alt="Final accuracy and forgetting for each strategy" />
-  <img src="assets/incremental_matrix.png" width="50%" alt="Per-task accuracy matrix" />
-</p>
-<p align="center"><img src="assets/incremental_combined.png" width="92%" alt="Class-incremental learning: strategy comparison and per-task accuracy matrix" /></p>
+<p align="center"><img src="assets/incremental_combined.png" width="82%" alt="Class-incremental learning: strategy comparison and per-task accuracy matrix" /></p>
 
 ### Leaf segmentation (U-Net, Apple classes)
 
@@ -77,28 +75,19 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 |---|---|---|
 | 0.9771 | 0.9883 | 2854 / 317 |
 
-<p align="center"><img src="assets/seg_samples.png" width="75%" alt="U-Net leaf segmentation: input, ground truth, prediction" /></p>
+<p align="center"><img src="assets/seg_samples.png" width="48%" alt="U-Net leaf segmentation: input, ground truth, prediction" /></p>
 
 *Training precision: fp32 for every run above.*
 
 ### Sample outputs
 
-<p align="center"><img src="assets/gan_real_vs_generated.png" width="85%" alt="DCGAN: real Cedar apple rust (top) vs generated (bottom)" /></p>
-<p align="center"><img src="assets/gradcam_comparison.png" width="85%" alt="Weakly-supervised lesion localization across Apple disease classes" /></p>
-
-<p align="center"><img src="assets/gradcam_0.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_0_Apple_scab)" /></p>
+<p align="center"><img src="assets/gradcam_comparison.png" width="55%" alt="Weakly-supervised lesion localization across Apple disease classes" /></p>
 
 <details>
-<summary><b>View more Grad-CAM localization samples</b></summary>
 <summary><b>Experimental: DCGAN Minority Class Synthesis (Cedar Apple Rust)</b></summary>
 <br/>
-<p align="center">
-  <img src="assets/gradcam_1.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_10_Apple_scab)" />
-  <br/><br/>
-  <img src="assets/gradcam_2.png" width="95%" alt="Grad-CAM heatmap and pseudo bounding box (sample_11_Apple_scab)" />
-</p>
-<p align="center"><img src="assets/gan_real_vs_generated.png" width="85%" alt="DCGAN: real Cedar apple rust (top) vs generated (bottom)" /></p>
-<p align="center"><i>Synthetic leaves generated at 64×64 resolution to address minority class scarcity. Retained as an experimental baseline.</i></p>
+<p align="center"><img src="assets/gan_real_vs_generated.png" width="65%" alt="DCGAN: real Cedar apple rust (top) vs generated (bottom)" /></p>
+<p align="center"><i>Synthetic leaves generated at 64×64 resolution to explore generative augmentation for scarce minority classes. Retained as a qualitative exploratory baseline (downstream classification gains are not claimed without higher-resolution generation).</i></p>
 </details>
 
 <!-- RESULTS:END -->
@@ -126,13 +115,14 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
   doesn't grow with the unlabeled pool.
 - **Class-incremental evaluation masks unseen classes.** After each task the model can only predict
   classes it has been taught, and distillation is applied only over the teacher's known classes.
-- **Every training run checkpoints each epoch** and can `--resume`, because Colab sessions disconnect.
+- **Classifier training runs checkpoint each epoch** and support `--resume`, making long or interrupted Colab/local sessions recoverable (auxiliary U-Net, GAN, and incremental experiments train in focused single sessions).
 
 ### Limitations
 
 - The train/validation split is random per image, not grouped by physical leaf, so some near-duplicate
   photos of one leaf may land on both sides; this is why the PlantDoc result is the more trustworthy number.
 - The class-incremental benchmark has only 4 classes and 3 tasks; it shows the method works, not how it scales.
+- Benchmark numbers are from single seeded runs; few-shot sampling and incremental task order vary across random seeds, so reporting mean ± std over multiple seeds is planned for future scaling.
 - DCGAN samples are 64×64; a diffusion model would give higher fidelity at much higher compute cost.
 - Grad-CAM boxes are not scored against ground-truth boxes (PlantVillage has none).
 
@@ -152,8 +142,8 @@ For a full local run on a CUDA GPU (one script, resumable, logs per step), see
 **[docs/LOCAL.md](docs/LOCAL.md)** and `scripts/run_all.sh`. Step by step:
 
 ```bash
-git clone https://github.com/tajammulbasheer/plant_leaf_disease_detection.git
-cd plant_leaf_disease_detection
+git clone https://github.com/tajammulbasheer/plant_leaf_diseases_detection.git
+cd plant_leaf_diseases_detection
 pip install -r requirements.txt
 pip install -e .
 python -m src.data.prepare_plantvillage --output-dir data --workdir . --cleanup-clone
@@ -187,6 +177,9 @@ Launch the interactive local web app with drag-and-drop leaf image testing, real
 pip install gradio
 python app.py
 ```
+
+It loads `baseline_apple_only/best_model.pt` and `baseline_full/best_model.pt` from `$RUN_DIR` if set,
+otherwise from `runs/`, `~/runs/plant_leaf` or the Colab Drive folder.
 
 ## Repository structure
 

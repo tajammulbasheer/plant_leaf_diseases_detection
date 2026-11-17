@@ -4,20 +4,20 @@ Everything runs from `notebooks/train_on_colab.ipynb`. The notebook is only a la
 calls one script in `src/`. Nothing needs uploading: the notebook clones this repo itself. No Kaggle
 or Hugging Face account is needed.
 
-**Open it directly:** [Open in Colab](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_disease_detection/blob/main/notebooks/train_on_colab.ipynb)
+**Open it directly:** [Open in Colab](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_diseases_detection/blob/main/notebooks/train_on_colab.ipynb)
 
 ## Where things live
 
 | What | Where | Survives a disconnect? |
 |---|---|---|
-| Code | `/content/plant_leaf_disease_detection` (cloned from GitHub by cell 2) | No, cell 2 re-clones it each session |
+| Code | `/content/plant_leaf_diseases_detection` (cloned from GitHub by cell 2) | No, cell 2 re-clones it each session |
 | Data | `/content/data` (built by cell 4) | No, re-run cell 4 each session |
 | Results, checkpoints, figures | Google Drive: `MyDrive/apple_leaf_runs/` | **Yes** |
 
 ## First run
 
-1. Open the notebook from GitHub: [this link](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_disease_detection/blob/main/notebooks/train_on_colab.ipynb), or in Colab use
-   **File → Open notebook → GitHub**, search `tajammulbasheer/plant_leaf_disease_detection`.
+1. Open the notebook from GitHub: [this link](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_diseases_detection/blob/main/notebooks/train_on_colab.ipynb), or in Colab use
+   **File → Open notebook → GitHub**, search `tajammulbasheer/plant_leaf_diseases_detection`.
 2. **Runtime → Change runtime type → T4 GPU.**
 3. Run cells in order:
 
