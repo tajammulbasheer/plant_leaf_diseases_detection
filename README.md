@@ -1,9 +1,7 @@
 # Leaf Disease Detection: Beyond In-Distribution Accuracy
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_diseases_detection/blob/main/notebooks/train_on_colab.ipynb)
-<!-- Uncomment after adding .github/workflows/ci.yml to GitHub:
 [![CI](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml/badge.svg)](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml)
--->
 
 Plant disease classification on the full **PlantVillage** dataset (38 classes, 14 crops), plus four
 experiments that test what a near-perfect PlantVillage score actually means:
@@ -17,9 +15,12 @@ Plus a U-Net leaf segmenter and a DCGAN for minority-class synthesis on the Appl
 
 ## Key findings
 
-- A standard EfficientNet-B0 reaches **99.9% accuracy** on PlantVillage, but the Apple-only version of the
-  same model drops to **51.7% accuracy (0.38 macro-F1)** on PlantDoc field photos (only 29 test images).
-  PlantVillage's uniform lab backgrounds make in-distribution accuracy a poor guide to real-world performance.
+- A standard EfficientNet-B0 reaches **99.9% accuracy** on PlantVillage, but on **236 PlantDoc field photos**
+  of the 27 classes both datasets share, the same model gets only **18.6% accuracy (0.14 macro-F1)**,
+  against 99.9% on the lab photos of those classes. PlantVillage's uniform lab backgrounds make
+  in-distribution accuracy a poor guide to real-world performance.
+- A specialist trained on the 4 Apple classes does better on PlantDoc's Apple photos (**51.7%**), but that
+  test has only 29 images.
 - With only **20 labeled images per class**, accuracy stays at **95.2%** across all 38 classes, and
   pseudo-labeling the unlabeled images raises it to **97.4%**.
 - When new diseases are added sequentially, naive fine-tuning forgets almost everything it knew;
@@ -43,6 +44,17 @@ experiment outputs. Nothing here is typed by hand.
   <img src="assets/classifier_modes.png" width="49%" alt="Validation accuracy and macro-F1 by training mode" />
   <img src="assets/training_curves.png" width="49%" alt="Validation macro-F1 per epoch" />
 </p>
+
+### Cross-dataset generalization (38-class model, every PlantDoc class with a PlantVillage match)
+
+| Test set | Classes | Images | Accuracy | Macro-F1 |
+|---|---|---|---|---|
+| PlantVillage val (same classes) | 27 | 7382 | 0.9989 | 0.9988 |
+| PlantDoc test (field photos) | 27 | 236 | 0.1864 | 0.1399 |
+
+Generalization gap: **0.812** accuracy, **0.859** macro-F1. *27 PlantDoc classes with a PlantVillage equivalent, 236 PlantDoc test images; the model predicts over all 38 classes.*
+
+<p align="center"><img src="assets/plantdoc_per_class.png" width="70%" alt="Per-class accuracy of the 38-class model on lab vs. field photos" /></p>
 
 ### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)
 
@@ -99,7 +111,7 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 | Data preparation | Clones the original PlantVillage repo, seeded stratified 80/20 split, Apple subset, U-Net masks | `src/data/prepare_plantvillage.py` |
 | Classifier | ImageNet-pretrained EfficientNet-B0 with a small MLP head; `full`, `few_shot`, `semi_supervised` modes | `src/training/train_classifier.py` |
 | Pseudo-labeling | Each epoch, predicts on a random slice of unlabeled images and trains on those above 0.95 confidence | same file |
-| Cross-dataset eval | Tests the Apple classifier on PlantDoc's overlapping classes; confusion matrices for both | `src/eval/` |
+| Cross-dataset eval | Tests the 38-class model on all 27 PlantDoc classes that map to PlantVillage (per-class chart), and the Apple classifier on PlantDoc's Apple photos (confusion matrices) | `src/eval/` |
 | Class-incremental | Base task (healthy, scab) with full data, then black rot and cedar rust from 20 shots each; naive vs. replay + distillation | `src/incremental/` |
 | Grad-CAM boxes | Hand-written Grad-CAM, thresholded into the largest connected region as a pseudo box | `src/interpretability/` |
 | Segmentation | U-Net trained with BCE + Dice on masks derived from PlantVillage's background-removed images | `src/training/train_segmentation.py` |
@@ -123,8 +135,11 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
   photos of one leaf may land on both sides; this is why the PlantDoc result is the more trustworthy number.
 - The class-incremental benchmark has only 4 classes and 3 tasks; it shows the method works, not how it scales.
 - Benchmark numbers are from single seeded runs; few-shot sampling and incremental task order vary across random seeds, so reporting mean ± std over multiple seeds is planned for future scaling.
+- PlantDoc's test split is small (236 images over 27 classes, 4–12 per class), so per-class PlantDoc
+  accuracies are noisy; the overall figure is the more reliable one.
 - DCGAN samples are 64×64; a diffusion model would give higher fidelity at much higher compute cost.
-- Grad-CAM boxes are not scored against ground-truth boxes (PlantVillage has none).
+- Grad-CAM boxes are not scored against ground-truth boxes (PlantVillage has none), and they can be
+  loose: in the sample figure the cedar-rust heatmap is diffuse and its box covers almost the whole leaf.
 
 ## Reproduce
 
@@ -212,6 +227,10 @@ src/
   utils/
     metrics.py                 accuracy, macro-F1 / precision / recall
     generate_report.py         results tables, figures, README update
+    make_figures.py            README sample figures (U-Net, Grad-CAM, DCGAN) from saved checkpoints
+    figure_style.py            shared figure palette
+tests/                          unit tests (pytest)
+.github/workflows/ci.yml        CI: unit tests + CPU smoke test on every push
 notebooks/train_on_colab.ipynb  Colab runner (calls the scripts above)
 scripts/run_all.sh              local runner: same steps and settings as the notebook
 scripts/smoke_test.sh           end-to-end check of every script on tiny synthetic data
