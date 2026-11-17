@@ -186,7 +186,7 @@ def build_demo():
     if gr is None:
         raise ImportError("Gradio is not installed. Please run: pip install gradio")
 
-    with gr.Blocks(theme=gr.themes.Soft(), title="Leaf Disease Detection & Localization") as demo:
+    with gr.Blocks(title="Leaf Disease Detection & Localization") as demo:
         gr.Markdown(
             """
             # 🌿 Leaf Disease Detection & Weakly-Supervised Localization
@@ -244,5 +244,8 @@ if __name__ == "__main__":
         print("Error: Gradio is not installed. Please run: pip install gradio")
         exit(1)
     demo = build_demo()
-    demo.launch()
+    try:
+        demo.launch(theme=gr.themes.Soft())
+    except TypeError:
+        demo.launch()
 
