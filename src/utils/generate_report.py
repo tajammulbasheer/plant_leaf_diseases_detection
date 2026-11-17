@@ -14,11 +14,13 @@ can run this after any subset of steps and re-run it as more finish.
 Expected layout under --run-dir (the folder names the notebook uses):
   baseline_full/ few_shot_k20/ semi_supervised_k20/   38-class classifier runs
   baseline_apple_only/                                 4-class classifier
-  cross_dataset_eval/                                  PlantVillage -> PlantDoc
+  cross_dataset_eval/                                  PlantVillage -> PlantDoc, Apple model
+  cross_dataset_eval_full/                             PlantVillage -> PlantDoc, 38-class model
   incremental/                                         class-incremental results
   unet/                                                U-Net segmentation
   gan_cedar_rust/                                      DCGAN samples
   gradcam_boxes/                                       Grad-CAM visualisations
+  figures/                                             README sample figures (src/utils/make_figures.py)
 
 Example (Colab):
     !python -m src.utils.generate_report --run-dir {RUN_DIR} \
@@ -37,12 +39,12 @@ import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+
+from src.utils import figure_style as fs
 
 # Palette: validated categorical slots + a single-hue blue ramp for magnitude.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 TEXT, TEXT_2, SURFACE, GRID = "#0b0b0b", "#52514e", "#fcfcfb", "#e4e3df"
-BLUE_RAMP = LinearSegmentedColormap.from_list("blue_ramp", ["#eef4fc", "#86b6ef", "#2a78d6", "#0d366b"])
 
 plt.rcParams.update({
     "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
@@ -163,13 +165,33 @@ def cross_dataset_section(run_dir, assets, figs):
                ("Macro-F1", [pv["macro_f1"], pd_["macro_f1"]], ORANGE)],
               "Same model, lab vs. field photos", assets / "cross_dataset.png")
     figs.append(("cross_dataset.png", "Accuracy drop from lab photos to real field photos"))
-    for name in ("confusion_plantvillage.png", "confusion_plantdoc.png"):
+    for name, caption in (("confusion_plantvillage.png", "Confusion matrix: PlantVillage (in-distribution)"),
+                          ("confusion_plantdoc.png", "Confusion matrix: PlantDoc (field photos)")):
         if (folder / name).exists():
             shutil.copy(folder / name, assets / name)
-            figs.append((name, name.replace("_", " ").replace(".png", "")))
+            figs.append((name, caption))
     return ("| Test set | Accuracy | Macro-F1 |\n|---|---|---|\n"
             f"| PlantVillage (in-distribution) | {fmt(pv['accuracy'])} | {fmt(pv['macro_f1'])} |\n"
             f"| PlantDoc (field photos) | {fmt(pd_['accuracy'])} | {fmt(pd_['macro_f1'])} |\n\n"
+            f"Generalization gap: **{r['accuracy_gap']:.3f}** accuracy, **{r['macro_f1_gap']:.3f}** macro-F1. "
+            f"*{r.get('note', '')}*")
+
+
+def cross_dataset_full_section(run_dir, assets, figs):
+    folder = run_dir / "cross_dataset_eval_full"
+    r = load_json(folder / "cross_dataset_results.json")
+    header = "| Test set | Classes | Images | Accuracy | Macro-F1 |\n|---|---|---|---|---|\n"
+    if not r:
+        return (header + f"| PlantVillage val (same classes) | — | — | {NOT_RUN} | — |\n"
+                f"| PlantDoc test (field photos) | — | — | {NOT_RUN} | — |")
+    pv, pd_ = r["plantvillage_in_distribution"], r["plantdoc_out_of_distribution"]
+    if (folder / "per_class_accuracy.png").exists():
+        shutil.copy(folder / "per_class_accuracy.png", assets / "plantdoc_per_class.png")
+        figs.append(("plantdoc_per_class.png", "Per-class accuracy of the 38-class model on lab vs. field photos"))
+    n = r["classes_evaluated"]
+    return (header +
+            f"| PlantVillage val (same classes) | {n} | {pv['n_images']} | {fmt(pv['accuracy'])} | {fmt(pv['macro_f1'])} |\n"
+            f"| PlantDoc test (field photos) | {n} | {pd_['n_images']} | {fmt(pd_['accuracy'])} | {fmt(pd_['macro_f1'])} |\n\n"
             f"Generalization gap: **{r['accuracy_gap']:.3f}** accuracy, **{r['macro_f1_gap']:.3f}** macro-F1. "
             f"*{r.get('note', '')}*")
 
@@ -179,7 +201,8 @@ def incremental_section(run_dir, assets, figs):
     if not r:
         return ("| Strategy | Final avg. accuracy | Avg. forgetting (lower is better) |\n|---|---|---|\n"
                 f"| Naive fine-tuning | {NOT_RUN} | — |\n| Replay + distillation | {NOT_RUN} | — |")
-    names = {"naive": "Naive Fine-Tuning", "replay_distill": "Replay + Distill"}
+    names = {"naive": "Naive Fine-Tuning", "replay_distill": "Replay + Distill"}  # figure labels
+    table_names = {"naive": "Naive fine-tuning", "replay_distill": "Replay + distillation"}
     present = [k for k in ("naive", "replay_distill") if k in r]
 
     # Combined figure to ensure 100% height match across panels
@@ -197,8 +220,8 @@ def incremental_section(run_dir, assets, figs):
     accs = [r[k]["final_average_accuracy"] for k in present]
     forgets = [r[k]["average_forgetting"] for k in present]
 
-    r1 = ax_bar.bar(x - width/2, accs, width, label="Final Avg. Accuracy", color=BLUE, zorder=3)
-    r2 = ax_bar.bar(x + width/2, forgets, width, label="Avg. Forgetting", color=ORANGE, zorder=3)
+    r1 = ax_bar.bar(x - width/2, accs, width, label="Final Avg. Accuracy", color=fs.BLUE_600, zorder=3)
+    r2 = ax_bar.bar(x + width/2, forgets, width, label="Avg. Forgetting", color=fs.ORANGE_600, zorder=3)
 
     ax_bar.set_xticks(x)
     ax_bar.set_xticklabels([names[k] for k in present], fontsize=9.5, fontweight="bold", color=TEXT)
@@ -226,7 +249,7 @@ def incremental_section(run_dir, assets, figs):
         m = r[k]["accuracy_matrix"]
         t = len(m)
         vals = [[(v if v is not None and v == v else float("nan")) for v in row] for row in m]
-        ax.imshow(vals, cmap=BLUE_RAMP, vmin=0, vmax=1)
+        ax.imshow(vals, cmap=fs.BLUE_RAMP, vmin=0, vmax=1)
         for i in range(t):
             for j in range(t):
                 v = vals[i][j]
@@ -248,15 +271,16 @@ def incremental_section(run_dir, assets, figs):
     figs.append(("incremental_combined.png", "Class-incremental learning: strategy comparison and per-task accuracy matrix"))
 
     rows = "\n".join(
-        f"| {names[k]} | {fmt(r[k]['final_average_accuracy'])} | {fmt(r[k]['average_forgetting'])} |"
+        f"| {table_names[k]} | {fmt(r[k]['final_average_accuracy'])} | {fmt(r[k]['average_forgetting'])} |"
         for k in present)
     return ("| Strategy | Final avg. accuracy | Avg. forgetting (lower is better) |\n|---|---|---|\n" + rows)
 
 
 def segmentation_section(run_dir, assets, figs):
     r = load_json(run_dir / "unet" / "seg_results.json")
-    if (run_dir / "unet" / "seg_samples.png").exists():
-        shutil.copy(run_dir / "unet" / "seg_samples.png", assets / "seg_samples.png")
+    src = first_existing(run_dir / "figures" / "seg_samples.png", run_dir / "unet" / "seg_samples.png")
+    if src:
+        shutil.copy(src, assets / "seg_samples.png")
         figs.append(("seg_samples.png", "U-Net leaf segmentation: input, ground truth, prediction"))
     if not r:
         return f"| Val IoU | Val Dice |\n|---|---|\n| {NOT_RUN} | — |"
@@ -264,18 +288,26 @@ def segmentation_section(run_dir, assets, figs):
             f"| {fmt(r['val_iou'])} | {fmt(r['val_dice'])} | {r.get('n_train', '?')} / {r.get('n_val', '?')} |")
 
 
+def first_existing(*paths):
+    return next((p for p in paths if p.exists()), None)
+
+
 def samples_section(run_dir, assets, figs):
-    if (assets / "gradcam_comparison.png").exists():
+    """Every figure is copied from the run directory on each call, so assets/ never holds a stale image."""
+    comparison = run_dir / "figures" / "gradcam_comparison.png"
+    if comparison.exists():
+        shutil.copy(comparison, assets / "gradcam_comparison.png")
         figs.append(("gradcam_comparison.png", "Weakly-supervised lesion localization across Apple disease classes"))
-    gan = run_dir / "gan_cedar_rust" / "real_vs_generated.png"
-    if gan.exists() and not (assets / "gan_real_vs_generated.png").exists():
+    gan = first_existing(run_dir / "figures" / "gan_real_vs_generated.png",
+                         run_dir / "gan_cedar_rust" / "real_vs_generated.png")
+    if gan:
         shutil.copy(gan, assets / "gan_real_vs_generated.png")
-    if (assets / "gan_real_vs_generated.png").exists():
         figs.append(("gan_real_vs_generated.png", "DCGAN: real Cedar apple rust (top) vs generated (bottom)"))
+    if comparison.exists():
+        return  # the comparison figure replaces the individual Grad-CAM samples
     cams = sorted((run_dir / "gradcam_boxes").glob("*.png"))[:3] if (run_dir / "gradcam_boxes").exists() else []
     for i, c in enumerate(cams):
-        if not (assets / f"gradcam_{i}.png").exists():
-            shutil.copy(c, assets / f"gradcam_{i}.png")
+        shutil.copy(c, assets / f"gradcam_{i}.png")
         figs.append((f"gradcam_{i}.png", f"Grad-CAM heatmap and pseudo bounding box ({c.stem})"))
 
 
@@ -332,6 +364,10 @@ def build_markdown(sections, figs, asset_prefix):
         cls_table,
         "",
         pair("classifier_modes.png", "49%", "training_curves.png", "49%"),
+        "### Cross-dataset generalization (38-class model, every PlantDoc class with a PlantVillage match)\n",
+        sections["cross_full"],
+        "",
+        single("plantdoc_per_class.png", width="70%"),
         "### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)\n",
         sections["cross"],
         "",
@@ -368,7 +404,7 @@ def build_markdown(sections, figs, asset_prefix):
             f"<summary><b>Experimental: DCGAN Minority Class Synthesis (Cedar Apple Rust)</b></summary>\n"
             f"<br/>\n"
             f'<p align="center"><img src="{asset_prefix}gan_real_vs_generated.png" width="65%" alt="{gan_cap}" /></p>\n'
-            f'<p align="center"><i>Synthetic leaves generated at 64×64 resolution to address minority class scarcity. Retained as an experimental baseline.</i></p>\n'
+            f'<p align="center"><i>Synthetic leaves generated at 64×64 resolution to explore generative augmentation for scarce minority classes. Retained as a qualitative exploratory baseline (downstream classification gains are not claimed without higher-resolution generation).</i></p>\n'
             f"</details>\n"
         )
 
@@ -398,6 +434,7 @@ def run(args):
     figs = []
     sections = {
         "classifier": classifier_section(run_dir, assets, figs),
+        "cross_full": cross_dataset_full_section(run_dir, assets, figs),
         "cross": cross_dataset_section(run_dir, assets, figs),
         "incremental": incremental_section(run_dir, assets, figs),
         "segmentation": segmentation_section(run_dir, assets, figs),

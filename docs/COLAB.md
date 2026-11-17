@@ -33,11 +33,12 @@ or Hugging Face account is needed.
 | 6 | 4-class Apple classifier | `baseline_apple_only/` | ~10 min |
 | 7 | U-Net segmentation | `unet/` | ~15–25 min |
 | 8 | DCGAN (optional) | `gan_cedar_rust/` | ~20–30 min |
-| 9 | PlantDoc cross-dataset test (needs cell 6) | `cross_dataset_eval/` | ~2 min |
+| 9 | PlantDoc cross-dataset tests: Apple model (needs cell 6), 38-class model (needs 5a) | `cross_dataset_eval/`, `cross_dataset_eval_full/` | ~2 min each |
 | 10 | Grad-CAM boxes (needs cell 6) | `gradcam_boxes/` | ~1 min |
 | 11 | Class-incremental learning | `incremental/` | ~20–30 min |
-| 12 | Build report + fill README | `report/` | seconds |
-| 13 | Download `report.zip` | — | seconds |
+| 12 | Sample figures for the README (from saved checkpoints) | `figures/` | seconds |
+| 13 | Build report + fill README | `report/` | seconds |
+| 14 | Download `report.zip` | — | seconds |
 
 Times are estimates and vary with Colab load.
 
@@ -95,4 +96,4 @@ Code changes pushed to GitHub reach Colab automatically: cell 2 runs `git pull` 
 | `trained on 38 classes, but this script needs the 4 Apple classes` | Run cell 6 first; cells 9 and 10 use the Apple checkpoint |
 | `CUDA out of memory` | Add `--batch-size 16` to that cell |
 | Clone in cell 4 fails partway | Re-run cell 4; it retries cleanly |
-| `RESULTS:START markers` warning in cell 12 | The README was edited and lost the marker comments; restore them from the repo |
+| `RESULTS:START markers` warning in cell 13 | The README was edited and lost the marker comments; restore them from the repo |

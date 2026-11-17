@@ -9,7 +9,7 @@
 #   DATA_DIR      prepared data + PlantDoc clone      (default ~/data/plantvillage)
 #   RUN_DIR       checkpoints, results, logs          (default ~/runs/plant_leaf)
 #   AMP=1         pass --amp to the classifier, U-Net and incremental steps (default 0 = fp32, as on Colab)
-#   BATCH_SIZE    override --batch-size for the classifier steps and the PlantDoc eval
+#   BATCH_SIZE    override --batch-size for the classifier steps and the PlantDoc evals
 #                 (default: unset = each script's own default, as on Colab)
 #   NUM_WORKERS   DataLoader workers for every step (default 8)
 #   PYTHON        interpreter (default .venv/bin/python)
@@ -113,6 +113,12 @@ if [ -f "$RUN/cross_dataset_eval/cross_dataset_results.json" ]; then skip plantd
         --plantvillage-val-dir "$DATA/apple/val" --plantdoc-dir "$PLANTDOC/test" \
         --output-dir "$RUN/cross_dataset_eval" --num-workers "$NW" $BS_FLAG
 fi
+# 6b. Same test with the 38-class model, on every PlantDoc class that has a PlantVillage equivalent.
+if [ -f "$RUN/cross_dataset_eval_full/cross_dataset_results.json" ]; then skip plantdoc_eval_full "cross_dataset_results.json"; else
+    run plantdoc_eval_full 1 "$PY" -m src.eval.cross_dataset_eval --subset full \
+        --checkpoint "$RUN/baseline_full/best_model.pt" --plantvillage-val-dir "$DATA/plantvillage_full/val" \
+        --plantdoc-dir "$PLANTDOC/test" --output-dir "$RUN/cross_dataset_eval_full" --num-workers "$NW" $BS_FLAG
+fi
 
 # 7. Grad-CAM pseudo boxes (cell 10). Done when all 16 images exist (the notebook only checks the
 #    folder, which would also skip a run that was interrupted halfway).
@@ -128,7 +134,10 @@ if [ -f "$RUN/incremental/incremental_results.json" ]; then skip incremental "in
         --num-workers "$NW" $AMP_FLAG
 fi
 
-# 9. Report (cell 12): RESULTS.md, figures into the repo's assets/, results block in README.md.
+# 9. README sample figures from the saved checkpoints (seconds; always rebuilt, deterministic).
+run figures 0 "$PY" -m src.utils.make_figures --run-dir "$RUN" --data-dir "$DATA"
+
+# 10. Report (cell 13): RESULTS.md, figures into the repo's assets/, results block in README.md.
 run report 0 "$PY" -m src.utils.generate_report --run-dir "$RUN" --output-dir "$RUN/report" \
     --assets-dir assets --readme README.md
 

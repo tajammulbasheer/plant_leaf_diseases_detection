@@ -143,6 +143,14 @@ if "$PY" -m src.eval.cross_dataset_eval --checkpoint "$R/baseline_full/best_mode
     > "$SMOKE_DIR/wrong_ckpt.txt" 2>&1; then echo "expected failure"; false; fi
 grep -q "needs the 4 Apple classes" "$SMOKE_DIR/wrong_ckpt.txt"
 
+step "cross_dataset_eval --subset full (38-class model, all mapped PlantDoc classes)"
+"$PY" -m src.eval.cross_dataset_eval --subset full --checkpoint "$R/baseline_full/best_model.pt" \
+    --plantvillage-val-dir "$D/plantvillage_full/val" --plantdoc-dir "$PD" --output-dir "$R/cross_dataset_eval_full" \
+    --image-size 64 --batch-size 8 $(opt src.eval.cross_dataset_eval "--num-workers $NW")
+need "$R/cross_dataset_eval_full/cross_dataset_results.json" "$R/cross_dataset_eval_full/per_class_accuracy.png"
+# the fake PlantDoc set has 4 mapped folders (3 Apple + Tomato leaf), 6 images each
+[ "$("$PY" -c "import json;r=json.load(open('$R/cross_dataset_eval_full/cross_dataset_results.json'));print(r['classes_evaluated'], r['plantdoc_out_of_distribution']['n_images'])")" = "4 24" ]
+
 step "pseudo_boxes (Grad-CAM)"
 "$PY" -m src.interpretability.pseudo_boxes --checkpoint "$R/baseline_apple_only/best_model.pt" \
     --data-dir "$D/apple/val" --output-dir "$R/gradcam_boxes" --num-samples 4 --image-size 64
@@ -154,11 +162,16 @@ step "train_incremental"
     $(opt src.incremental.train_incremental "--num-workers $NW" "$AMP_FLAG")
 need "$R/incremental/incremental_results.json"
 
+step "make_figures (README sample figures from the checkpoints)"
+"$PY" -m src.utils.make_figures --run-dir "$R" --data-dir "$D" --image-size 64 --seg-image-size 128
+need "$R/figures/seg_samples.png" "$R/figures/gradcam_comparison.png" "$R/figures/gan_real_vs_generated.png"
+
 step "generate_report (README copy, never the real README)"
 cp README.md "$SMOKE_DIR/README.copy.md"
 "$PY" -m src.utils.generate_report --run-dir "$R" --output-dir "$R/report" \
     --assets-dir "$SMOKE_DIR/assets" --readme "$SMOKE_DIR/README.copy.md"
-need "$R/report/RESULTS.md" "$SMOKE_DIR/assets/classifier_modes.png" "$SMOKE_DIR/assets/incremental_combined.png"
+need "$R/report/RESULTS.md" "$SMOKE_DIR/assets/classifier_modes.png" "$SMOKE_DIR/assets/incremental_combined.png" \
+    "$SMOKE_DIR/assets/plantdoc_per_class.png" "$SMOKE_DIR/assets/gradcam_comparison.png"
 grep -q "RESULTS:START" "$SMOKE_DIR/README.copy.md"
 if grep -q "not run yet" "$SMOKE_DIR/README.copy.md"; then echo "report still has not-run sections"; false; fi
 [ "$(guard_sum)" = "$GUARD" ] || { echo "smoke test modified the real README.md or assets/"; false; }

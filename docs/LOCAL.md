@@ -34,13 +34,14 @@ scripts/run_all.sh
 | `DATA_DIR` | `~/data/plantvillage` | prepared data (`plantvillage_full/`, `apple/`, `seg/`) and the PlantDoc clone |
 | `RUN_DIR` | `~/runs/plant_leaf` | one folder per experiment, plus `logs/` and `report/` |
 | `AMP` | `0` | `1` passes `--amp` (fp16 mixed precision) to the classifier, U-Net and incremental steps |
-| `BATCH_SIZE` | script default (32) | batch size of the classifier steps and the PlantDoc eval |
+| `BATCH_SIZE` | script default (32) | batch size of the classifier steps and the PlantDoc evals |
 | `NUM_WORKERS` | `8` | DataLoader workers for every step |
 | `PYTHON` | `.venv/bin/python` | interpreter |
 
 Steps: data preparation → 38-class classifier (full, few-shot, semi-supervised) → Apple-only classifier
-→ U-Net → DCGAN → PlantDoc eval → Grad-CAM boxes → class-incremental → `generate_report`, which writes
-the figures into `assets/` and fills the results block of `README.md`.
+→ U-Net → DCGAN → PlantDoc evals (Apple model, then 38-class model) → Grad-CAM boxes → class-incremental
+→ README sample figures (`make_figures`) → `generate_report`, which writes the figures into `assets/` and
+fills the results block of `README.md`.
 
 Each step logs to `$RUN_DIR/logs/<step>.log`, starting with the date, git commit, torch / CUDA / cuDNN /
 driver versions and the exact command. Before every training step the free GPU memory is printed, with a
@@ -86,7 +87,9 @@ not benchmarked directly. These are estimates, not measurements:
 | Classifier, Apple-only | 15 epochs × 2.5k train | ~2 min | ~1.5 min |
 | U-Net | 15 epochs × 2.9k images | ~7 min | ~5 min |
 | DCGAN | 100 epochs × 220 images at 64 px | a few minutes | same (no AMP) |
-| PlantDoc eval, Grad-CAM | inference on < 700 images | ~1 min each | same |
+| PlantDoc eval (Apple), Grad-CAM | inference on < 700 images | ~1 min each | same |
+| PlantDoc eval (38-class) | inference on ~7.6k images | under 1 min (37 s measured on a shared GPU) | same |
+| Sample figures | inference on a handful of images | seconds | same |
 | Class-incremental | 2 strategies × 3 tasks × 15 epochs (batch 16) | 3–5 min | 2–4 min |
 | **Total** (data already prepared) | | **~1–1.25 h** | **~45–60 min** |
 
@@ -131,10 +134,10 @@ Just run `scripts/run_all.sh` again (in tmux). Nothing needs to be deleted.
 | Classifiers (4 runs) | **Resume** with `--resume` from `last_checkpoint.pt` (weights, optimizer, LR schedule, RNG state of the last finished epoch). A finished run prints "Run already complete". Loses at most the epoch in progress. |
 | U-Net | Restarts from scratch (skipped once `seg_samples.png` exists). |
 | DCGAN | Restarts from scratch (skipped once `real_vs_generated.png` exists). |
-| PlantDoc eval | Re-runs (skipped once `cross_dataset_results.json` exists). |
+| PlantDoc evals | Re-run (each skipped once its `cross_dataset_results.json` exists). |
 | Grad-CAM | Re-runs (skipped once all 16 images exist). |
 | Class-incremental | Restarts both strategies from scratch (skipped once `incremental_results.json` exists). |
-| Report | Always re-runs (seconds). |
+| Sample figures, report | Always re-run (seconds; rebuilt from the saved checkpoints). |
 
 To redo a step, delete its folder under `$RUN_DIR`. Classifier runs from before `last_checkpoint.pt`
 existed still resume, but from the best epoch's weights with a fresh optimizer (printed in the log).
