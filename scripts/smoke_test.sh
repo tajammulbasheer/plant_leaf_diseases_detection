@@ -158,7 +158,7 @@ step "generate_report (README copy, never the real README)"
 cp README.md "$SMOKE_DIR/README.copy.md"
 "$PY" -m src.utils.generate_report --run-dir "$R" --output-dir "$R/report" \
     --assets-dir "$SMOKE_DIR/assets" --readme "$SMOKE_DIR/README.copy.md"
-need "$R/report/RESULTS.md" "$SMOKE_DIR/assets/classifier_modes.png" "$SMOKE_DIR/assets/incremental_matrix.png"
+need "$R/report/RESULTS.md" "$SMOKE_DIR/assets/classifier_modes.png" "$SMOKE_DIR/assets/incremental_combined.png"
 grep -q "RESULTS:START" "$SMOKE_DIR/README.copy.md"
 if grep -q "not run yet" "$SMOKE_DIR/README.copy.md"; then echo "report still has not-run sections"; false; fi
 [ "$(guard_sum)" = "$GUARD" ] || { echo "smoke test modified the real README.md or assets/"; false; }
