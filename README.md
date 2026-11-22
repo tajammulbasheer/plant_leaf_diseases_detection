@@ -2,6 +2,7 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tajammulbasheer/plant_leaf_diseases_detection/blob/main/notebooks/train_on_colab.ipynb)
 [![CI](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml/badge.svg)](https://github.com/tajammulbasheer/plant_leaf_diseases_detection/actions/workflows/ci.yml)
+[![Open in Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/tajammulbasheer/plant-leaf-disease-detection)
 
 Plant disease classification on the full **PlantVillage** dataset (38 classes, 14 crops), plus four
 experiments that test what a near-perfect PlantVillage score actually means:
@@ -11,7 +12,9 @@ experiments that test what a near-perfect PlantVillage score actually means:
 - **Continual learning**: adding new diseases one at a time from 20 examples each, measuring forgetting
 - **Localization without boxes**: Grad-CAM heatmaps turned into lesion bounding boxes, using only image labels
 
+Try it: live demo on [Hugging Face Spaces](https://huggingface.co/spaces/tajammulbasheer/plant-leaf-disease-detection). Upload a leaf photo to get the diagnosis and a Grad-CAM heatmap.</br>
 Plus a U-Net leaf segmenter and a DCGAN for minority-class synthesis on the Apple subset.
+
 
 ## Key findings
 
