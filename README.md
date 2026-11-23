@@ -22,6 +22,15 @@ Plus a U-Net leaf segmenter and a DCGAN for minority-class synthesis on the Appl
   of the 27 classes both datasets share, the same model gets only **18.6% accuracy (0.14 macro-F1)**,
   against 99.9% on the lab photos of those classes. PlantVillage's uniform lab backgrounds make
   in-distribution accuracy a poor guide to real-world performance.
+- Cheap test-time fixes don't close that gap. Flip-based test-time augmentation changes nothing; AdaBN
+  (re-estimating BatchNorm statistics on unlabeled field photos) lifts field accuracy to **24.6%** with
+  TTA (McNemar p = 0.03), but costs lab accuracy (99.9% → 93.4%). The shortcut is in the learned features,
+  not just in their statistics.
+- Retraining with randomized backgrounds (each training leaf pasted onto a random texture from DTD, with
+  probability 0.8) lifts field accuracy to **30.9%** (+42 / −13 images vs. the original model, McNemar
+  p < 0.001) and keeps 99.8% on PlantVillage. In the sample Grad-CAM figure, the original model looks at
+  the fingers holding a tomato leaf, and the retrained one looks at the lesions. That is still far from usable:
+  field photos also differ in lighting, viewpoint and the number of leaves in the frame.
 - A specialist trained on the 4 Apple classes does better on PlantDoc's Apple photos (**51.7%**), but that
   test has only 29 images.
 - With only **20 labeled images per class**, accuracy stays at **95.2%** across all 38 classes, and
@@ -58,6 +67,30 @@ experiment outputs. Nothing here is typed by hand.
 Generalization gap: **0.812** accuracy, **0.859** macro-F1. *27 PlantDoc classes with a PlantVillage equivalent, 236 PlantDoc test images; the model predicts over all 38 classes.*
 
 <p align="center"><img src="assets/plantdoc_per_class.png" width="70%" alt="Per-class accuracy of the 38-class model on lab vs. field photos" /></p>
+
+### Test-time adaptation on PlantDoc (38-class model, no retraining, no PlantDoc labels)
+
+| Method | PlantDoc test accuracy | PlantDoc macro-F1 | Images fixed / broken vs. no adaptation (McNemar p) | PlantVillage val accuracy |
+|---|---|---|---|---|
+| No adaptation | 0.1864 | 0.1399 | — | 0.9989 |
+| TTA (4 flips) | 0.1864 | 0.1449 | +4 / −4 (p = 1.000) | 0.9989 |
+| AdaBN | 0.2373 | 0.1790 | +22 / −10 (p = 0.050) | 0.9331 |
+| AdaBN + TTA | 0.2458 | 0.1933 | +25 / −11 (p = 0.029) | 0.9336 |
+
+*AdaBN re-estimates BatchNorm statistics on 2331 unlabeled PlantDoc train images (11 exact copies of test images excluded); model weights are unchanged. Scored on the same 236 PlantDoc test / 7382 PlantVillage val images (27 classes) as above. McNemar: exact two-sided test on per-image correctness.*
+
+<p align="center"><img src="assets/test_time_adaptation.png" width="60%" alt="Accuracy on PlantDoc and PlantVillage for each test-time method" /></p>
+
+### Background randomization (38-class model retrained with leaves on random backgrounds)
+
+| Model | PlantVillage val (38 classes) | PlantVillage val (27 shared classes) | PlantDoc test accuracy | PlantDoc macro-F1 | Images fixed / broken vs. original (McNemar p) |
+|---|---|---|---|---|---|
+| Original (lab backgrounds) | 0.9991 | 0.9989 | 0.1864 | 0.1399 | — |
+| Background-randomized (DTD) | 0.9982 | 0.9974 | 0.3093 | 0.2188 | +42 / −13 (p < 0.001) |
+
+*Training images had their background replaced by a random DTD texture crop with probability 0.8, using leaf masks from PlantVillage's background-removed copies; all other settings as the original. Validation and test images are unchanged. McNemar: exact two-sided test on per-image correctness on the same PlantDoc test images.*
+
+<p align="center"><img src="assets/gradcam_field.png" width="80%" alt="Grad-CAM on PlantDoc field photos: original vs. background-randomized model" /></p>
 
 ### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)
 
@@ -115,6 +148,8 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 | Classifier | ImageNet-pretrained EfficientNet-B0 with a small MLP head; `full`, `few_shot`, `semi_supervised` modes | `src/training/train_classifier.py` |
 | Pseudo-labeling | Each epoch, predicts on a random slice of unlabeled images and trains on those above 0.95 confidence | same file |
 | Cross-dataset eval | Tests the 38-class model on all 27 PlantDoc classes that map to PlantVillage (per-class chart), and the Apple classifier on PlantDoc's Apple photos (confusion matrices) | `src/eval/` |
+| Test-time adaptation | Flip TTA and AdaBN (BatchNorm statistics from unlabeled PlantDoc train photos, test duplicates excluded); methods fixed in advance, paired McNemar test against no adaptation | `src/eval/test_time_adaptation.py` |
+| Background randomization | Leaf masks from PlantVillage's background-removed copies; during training, each leaf is pasted onto a random DTD texture crop with probability 0.8 (opt-in `--background-dir` / `--mask-dir`) | `src/data/build_leaf_masks.py`, `src/data/dataset.py` |
 | Class-incremental | Base task (healthy, scab) with full data, then black rot and cedar rust from 20 shots each; naive vs. replay + distillation | `src/incremental/` |
 | Grad-CAM boxes | Hand-written Grad-CAM, thresholded into the largest connected region as a pseudo box | `src/interpretability/` |
 | Segmentation | U-Net trained with BCE + Dice on masks derived from PlantVillage's background-removed images | `src/training/train_segmentation.py` |
@@ -140,6 +175,8 @@ Generalization gap: **0.483** accuracy, **0.625** macro-F1. *Note: 'Black_rot' h
 - Benchmark numbers are from single seeded runs; few-shot sampling and incremental task order vary across random seeds, so reporting mean ± std over multiple seeds is planned for future scaling.
 - PlantDoc's test split is small (236 images over 27 classes, 4–12 per class), so per-class PlantDoc
   accuracies are noisy; the overall figure is the more reliable one.
+- Background randomization is one run with settings fixed in advance (p = 0.8, DTD textures), not tuned on
+  PlantDoc. About 2.2% of PlantVillage images have no matching background-removed copy; those are always used unchanged.
 - DCGAN samples are 64×64; a diffusion model would give higher fidelity at much higher compute cost.
 - Grad-CAM boxes are not scored against ground-truth boxes (PlantVillage has none), and they can be
   loose: in the sample figure the cedar-rust heatmap is diffuse and its box covers almost the whole leaf.
@@ -208,8 +245,9 @@ pyproject.toml                  package metadata and standard editable installat
 samples/                        sample leaf photos for 1-click testing in the web demo
 src/
   data/
-    dataset.py                 class-folder dataset, few-shot sampling, transforms, seeding
+    dataset.py                 class-folder dataset, few-shot sampling, background swap, transforms, seeding
     prepare_plantvillage.py    download, split, Apple subset, segmentation masks
+    build_leaf_masks.py        leaf masks for the 38-class split (background randomization)
   models/
     classifier.py              EfficientNet / ResNet classifier
     unet.py                    U-Net
@@ -221,6 +259,7 @@ src/
   eval/
     plantdoc.py                PlantDoc loader (class mapping)
     cross_dataset_eval.py      in- vs. out-of-distribution evaluation
+    test_time_adaptation.py    TTA and AdaBN on PlantDoc (no retraining, no PlantDoc labels)
   incremental/
     train_incremental.py       class-incremental few-shot learning
     metrics.py                 accuracy matrix, forgetting
@@ -249,6 +288,8 @@ assets/                         figures used in this README
   [spMohanty/PlantVillage-Dataset](https://github.com/spMohanty/PlantVillage-Dataset).
 - **PlantDoc**: Singh et al., *PlantDoc: A Dataset for Visual Plant Disease Detection*, CoDS-COMAD 2020.
   [pratikkayal/PlantDoc-Dataset](https://github.com/pratikkayal/PlantDoc-Dataset).
+- **DTD** (background textures): Cimpoi et al., *Describing Textures in the Wild*, CVPR 2014.
+  [robots.ox.ac.uk/~vgg/data/dtd](https://www.robots.ox.ac.uk/~vgg/data/dtd/).
 
 Datasets are downloaded at run time and are not redistributed in this repository.
 
