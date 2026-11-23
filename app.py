@@ -5,13 +5,14 @@ Features:
 - Instant disease diagnosis with class confidence breakdown
 - Weakly-supervised lesion localization via Grad-CAM heatmaps
 - Automatic pseudo-bounding box detection around lesions
-- Dual model support: Apple Specialist (4 classes) & PlantVillage Full (38 classes)
+- Three models: Apple Specialist (4 classes), PlantVillage Full (38 classes), and the same 38-class model
+  retrained with randomized backgrounds
 
 Run locally:
     pip install gradio
     python app.py
 
-Checkpoints are looked up as <dir>/baseline_apple_only/best_model.pt and <dir>/baseline_full/best_model.pt,
+Checkpoints are looked up as <dir>/<subfolder>/best_model.pt (subfolders in MODEL_CONFIGS),
 with <dir> taken from $RUN_DIR first, then the defaults in SEARCH_DIRS.
 """
 
@@ -74,6 +75,10 @@ MODEL_CONFIGS = {
     },
     "Full PlantVillage (38 Classes)": {
         "subfolder": "baseline_full",
+        "expected_classes": None,
+    },
+    "Full PlantVillage, Background-Randomized (38 Classes)": {
+        "subfolder": "baseline_full_bgrand",
         "expected_classes": None,
     },
 }
@@ -202,7 +207,9 @@ def build_demo():
 
             **Limitation:** the models were trained on PlantVillage lab photos (one leaf, plain background).
             On real field photos (PlantDoc) the Apple model's accuracy drops to about half; see the
-            cross-dataset results in the README. Expect unreliable predictions on cluttered photos.
+            cross-dataset results in the README. The background-randomized 38-class model, trained with leaves
+            pasted onto random textures, does better on field photos than the original but is still unreliable
+            on cluttered photos.
             """
         )
 

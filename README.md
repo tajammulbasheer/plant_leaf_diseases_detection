@@ -233,7 +233,7 @@ pip install gradio
 python app.py
 ```
 
-It loads `baseline_apple_only/best_model.pt` and `baseline_full/best_model.pt` from `$RUN_DIR` if set,
+It loads `best_model.pt` from `baseline_apple_only/`, `baseline_full/` and `baseline_full_bgrand/` under `$RUN_DIR` if set,
 otherwise from `runs/`, `~/runs/plant_leaf` or the Colab Drive folder.
 
 ## Repository structure
