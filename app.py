@@ -31,6 +31,13 @@ try:
 except ImportError:
     gr = None
 
+try:  # Hugging Face ZeroGPU Spaces attach a GPU only while a @spaces.GPU function runs
+    import spaces
+    gpu = spaces.GPU
+except ImportError:  # local runs and CPU Spaces: no-op
+    def gpu(fn):
+        return fn
+
 from src.models.classifier import LeafClassifier, load_checkpoint_classes
 from src.interpretability.gradcam import GradCAM, get_last_conv_layer
 from src.interpretability.pseudo_boxes import cam_to_bbox, denormalize
@@ -107,6 +114,7 @@ def get_model(model_name: str) -> Tuple[Optional[LeafClassifier], list, Optional
     return model, classes, gradcam
 
 
+@gpu
 def analyze_leaf(
     image: np.ndarray,
     model_name: str,
@@ -243,6 +251,8 @@ if __name__ == "__main__":
     if gr is None:
         print("Error: Gradio is not installed. Please run: pip install gradio")
         exit(1)
+    for name in MODEL_CONFIGS:  # load at startup (ZeroGPU expects models placed before the first request)
+        get_model(name)
     demo = build_demo()
     try:
         demo.launch(theme=gr.themes.Soft())
