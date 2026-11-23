@@ -120,6 +120,38 @@ if [ -f "$RUN/cross_dataset_eval_full/cross_dataset_results.json" ]; then skip p
         --plantdoc-dir "$PLANTDOC/test" --output-dir "$RUN/cross_dataset_eval_full" --num-workers "$NW" $BS_FLAG
 fi
 
+# 6c. Test-time adaptation (TTA, AdaBN) of the 38-class model on PlantDoc: no retraining, no PlantDoc labels.
+if [ -f "$RUN/test_time_adaptation/tta_results.json" ]; then skip test_time_adaptation "tta_results.json"; else
+    run test_time_adaptation 1 "$PY" -m src.eval.test_time_adaptation \
+        --checkpoint "$RUN/baseline_full/best_model.pt" --plantdoc-root "$PLANTDOC" \
+        --plantvillage-val-dir "$DATA/plantvillage_full/val" --output-dir "$RUN/test_time_adaptation" \
+        --num-workers "$NW" $BS_FLAG
+fi
+
+# 6d. Background randomization: leaf masks for every image (from PlantVillage's background-removed copies),
+#     DTD textures as backgrounds, then the 38-class classifier retrained with the same settings as step 2
+#     except the background swap, and the same PlantDoc test.
+if [ -n "$(ls -A "$DATA/plantvillage_full_masks/train" 2>/dev/null)" ]; then skip leaf_masks "plantvillage_full_masks"; else
+    run leaf_masks 0 "$PY" -m src.data.build_leaf_masks --repo-dir "$DATA/PlantVillage-Dataset" \
+        --data-dir "$DATA/plantvillage_full" --output-dir "$DATA/plantvillage_full_masks" --cleanup-clone
+fi
+if [ -d "$DATA/dtd/images" ]; then skip backgrounds "$DATA/dtd"; else
+    # DTD (Describable Textures Dataset, Cimpoi et al. 2014), ~600 MB; extracted in its own folder first.
+    run backgrounds 0 bash -c "rm -rf '$DATA/dtd.download' && mkdir -p '$DATA/dtd.download' && \
+        curl -sSfL https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz \
+        | tar -xz --no-same-owner --no-same-permissions -C '$DATA/dtd.download' && \
+        mv '$DATA/dtd.download/dtd' '$DATA/dtd' && rm -rf '$DATA/dtd.download'"
+fi
+run classifier_full_bgrand 1 "$PY" -m src.training.train_classifier --data-dir "$DATA/plantvillage_full" \
+    --output-dir "$RUN/baseline_full_bgrand" --mode full --epochs 20 --resume \
+    --background-dir "$DATA/dtd/images" --mask-dir "$DATA/plantvillage_full_masks" \
+    --num-workers "$NW" $BS_FLAG $AMP_FLAG
+if [ -f "$RUN/cross_dataset_eval_full_bgrand/cross_dataset_results.json" ]; then skip plantdoc_eval_full_bgrand "cross_dataset_results.json"; else
+    run plantdoc_eval_full_bgrand 1 "$PY" -m src.eval.cross_dataset_eval --subset full \
+        --checkpoint "$RUN/baseline_full_bgrand/best_model.pt" --plantvillage-val-dir "$DATA/plantvillage_full/val" \
+        --plantdoc-dir "$PLANTDOC/test" --output-dir "$RUN/cross_dataset_eval_full_bgrand" --num-workers "$NW" $BS_FLAG
+fi
+
 # 7. Grad-CAM pseudo boxes (cell 10). Done when all 16 images exist (the notebook only checks the
 #    folder, which would also skip a run that was interrupted halfway).
 if [ "$(ls "$RUN/gradcam_boxes"/*.png 2>/dev/null | wc -l)" -ge 16 ]; then skip gradcam "16 images"; else
@@ -135,7 +167,7 @@ if [ -f "$RUN/incremental/incremental_results.json" ]; then skip incremental "in
 fi
 
 # 9. README sample figures from the saved checkpoints (seconds; always rebuilt, deterministic).
-run figures 0 "$PY" -m src.utils.make_figures --run-dir "$RUN" --data-dir "$DATA"
+run figures 0 "$PY" -m src.utils.make_figures --run-dir "$RUN" --data-dir "$DATA" --plantdoc-dir "$PLANTDOC/test"
 
 # 10. Report (cell 13): RESULTS.md, figures into the repo's assets/, results block in README.md.
 run report 0 "$PY" -m src.utils.generate_report --run-dir "$RUN" --output-dir "$RUN/report" \

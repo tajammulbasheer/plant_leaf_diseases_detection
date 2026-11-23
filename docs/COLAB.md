@@ -33,7 +33,8 @@ or Hugging Face account is needed.
 | 6 | 4-class Apple classifier | `baseline_apple_only/` | ~10 min |
 | 7 | U-Net segmentation | `unet/` | ~15–25 min |
 | 8 | DCGAN (optional) | `gan_cedar_rust/` | ~20–30 min |
-| 9 | PlantDoc cross-dataset tests: Apple model (needs cell 6), 38-class model (needs 5a) | `cross_dataset_eval/`, `cross_dataset_eval_full/` | ~2 min each |
+| 9 | PlantDoc cross-dataset tests: Apple model (needs cell 6), 38-class model (needs 5a), test-time adaptation (needs 5a) | `cross_dataset_eval/`, `cross_dataset_eval_full/`, `test_time_adaptation/` | ~2 min each |
+| 9b | Background randomization: leaf masks, DTD backgrounds, retrained 38-class model, PlantDoc test | `baseline_full_bgrand/`, `cross_dataset_eval_full_bgrand/` | ~1–2 h |
 | 10 | Grad-CAM boxes (needs cell 6) | `gradcam_boxes/` | ~1 min |
 | 11 | Class-incremental learning | `incremental/` | ~20–30 min |
 | 12 | Sample figures for the README (from saved checkpoints) | `figures/` | seconds |

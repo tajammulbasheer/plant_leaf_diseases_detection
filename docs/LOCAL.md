@@ -21,7 +21,8 @@ python3 -m venv .venv
 scripts/smoke_test.sh            # every script on tiny synthetic data
 ```
 
-Disk: about 10 GB for data and runs (the PlantVillage clone is deleted after preparation).
+Disk: about 10 GB for data and runs (the PlantVillage clone is deleted after preparation). Background
+randomization adds ~0.8 GB (leaf masks 0.2 GB, DTD 0.6 GB) and re-clones PlantVillage temporarily (~2 GB).
 
 ## 2. Run the pipeline
 
@@ -39,7 +40,9 @@ scripts/run_all.sh
 | `PYTHON` | `.venv/bin/python` | interpreter |
 
 Steps: data preparation → 38-class classifier (full, few-shot, semi-supervised) → Apple-only classifier
-→ U-Net → DCGAN → PlantDoc evals (Apple model, then 38-class model) → Grad-CAM boxes → class-incremental
+→ U-Net → DCGAN → PlantDoc evals (Apple model, then 38-class model) → test-time adaptation (TTA, AdaBN)
+→ background randomization (leaf masks, DTD backgrounds, retrained 38-class model, PlantDoc test)
+→ Grad-CAM boxes → class-incremental
 → README sample figures (`make_figures`) → `generate_report`, which writes the figures into `assets/` and
 fills the results block of `README.md`.
 
@@ -131,10 +134,11 @@ Just run `scripts/run_all.sh` again (in tmux). Nothing needs to be deleted.
 | Step | After an interruption |
 |---|---|
 | Data preparation | Skipped once `plantvillage_full/val` and `seg/masks` exist. An interrupted clone is removed and re-cloned. |
-| Classifiers (4 runs) | **Resume** with `--resume` from `last_checkpoint.pt` (weights, optimizer, LR schedule, RNG state of the last finished epoch). A finished run prints "Run already complete". Loses at most the epoch in progress. |
+| Classifiers (5 runs) | **Resume** with `--resume` from `last_checkpoint.pt` (weights, optimizer, LR schedule, RNG state of the last finished epoch). A finished run prints "Run already complete". Loses at most the epoch in progress. |
+| Leaf masks, DTD backgrounds | Skipped once `plantvillage_full_masks/train` and `dtd/images` exist. An interrupted mask build re-clones PlantVillage if needed and starts over. |
 | U-Net | Restarts from scratch (skipped once `seg_samples.png` exists). |
 | DCGAN | Restarts from scratch (skipped once `real_vs_generated.png` exists). |
-| PlantDoc evals | Re-run (each skipped once its `cross_dataset_results.json` exists). |
+| PlantDoc evals, test-time adaptation | Re-run (each skipped once its results JSON exists). |
 | Grad-CAM | Re-runs (skipped once all 16 images exist). |
 | Class-incremental | Restarts both strategies from scratch (skipped once `incremental_results.json` exists). |
 | Sample figures, report | Always re-run (seconds; rebuilt from the saved checkpoints). |

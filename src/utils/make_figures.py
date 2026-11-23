@@ -4,6 +4,8 @@ Build the README sample figures from the saved checkpoints, so every image in as
   <run-dir>/figures/seg_samples.png            U-Net: input | ground truth | prediction (2 val samples)
   <run-dir>/figures/gradcam_comparison.png     Grad-CAM heatmap + pseudo box, one Apple disease per row
   <run-dir>/figures/gan_real_vs_generated.png  8 real vs. 8 DCGAN-generated Cedar apple rust leaves
+  <run-dir>/figures/gradcam_field.png          Grad-CAM on PlantDoc field photos, original vs. background-
+                                               randomized 38-class model (needs --plantdoc-dir)
 
 Nothing is trained. Each figure is skipped (with a message) if its checkpoint or data is missing.
 generate_report.py prefers these over the plain per-script figures.
@@ -157,13 +159,55 @@ def gan_figure(args, device, out_path):
     plt.close(fig)
 
 
+def gradcam_field_figure(args, device, out_path):
+    """Where each 38-class model looks on field photos. Photos are a fixed random pick (seed 0), not chosen by eye."""
+    import random
+    from src.eval.cross_dataset_eval import load_model
+    from src.eval.plantdoc import PlantDocDataset, PLANTDOC_FULL_TO_PLANTVILLAGE
+
+    if not args.plantdoc_dir:
+        raise FileNotFoundError("--plantdoc-dir not given")
+    models = []
+    for folder, title in [("baseline_full", "Original model"), ("baseline_full_bgrand", "Background-randomized")]:
+        model, classes = load_model(args.run_dir / folder / "best_model.pt", "efficientnet_b0", device)
+        models.append((title, model, classes, GradCAM(model, get_last_conv_layer(model))))
+    class_to_idx = {c: i for i, c in enumerate(models[0][2])}
+    transform = default_transforms(train=False, image_size=args.image_size)
+    ds = PlantDocDataset(args.plantdoc_dir, class_to_idx, mapping=PLANTDOC_FULL_TO_PLANTVILLAGE)
+    samples = sorted(ds.samples)
+    random.Random(0).shuffle(samples)
+    samples = samples[:args.field_samples]
+
+    short = lambda c: c.replace("___", ": ").replace("_", " ")
+    fig, axes = plt.subplots(len(samples), 3, figsize=(11, 3.4 * len(samples) + 0.6), squeeze=False,
+                             facecolor="white")
+    for i, (path, label) in enumerate(samples):
+        tensor = transform(Image.open(path).convert("RGB"))
+        img = denormalize(tensor).permute(1, 2, 0).numpy()
+        axes[i][0].imshow(img)
+        axes[i][0].set_title(f"True: {short(models[0][2][label])}", fontsize=9.5, fontweight="bold", color=INK)
+        for j, (title, model, classes, cam_extractor) in enumerate(models, start=1):
+            cam, pred = cam_extractor(tensor.unsqueeze(0).to(device))
+            ok = "✓" if pred == label else "✗"
+            axes[i][j].imshow(img)
+            axes[i][j].imshow(cam.cpu().numpy(), cmap="jet", alpha=0.5)
+            axes[i][j].set_title(f"{title}\n{ok} predicted: {short(classes[pred])}", fontsize=9.5, color=INK)
+        for ax in axes[i]:
+            ax.axis("off")
+    fig.suptitle("Grad-CAM on PlantDoc field photos (random pick): where does each model look?",
+                 fontsize=13, fontweight="bold", color=INK)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 def run(args):
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     out_dir = args.output_dir or args.run_dir / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, fn in [("seg_samples.png", seg_figure), ("gradcam_comparison.png", gradcam_figure),
-                     ("gan_real_vs_generated.png", gan_figure)]:
+                     ("gan_real_vs_generated.png", gan_figure), ("gradcam_field.png", gradcam_field_figure)]:
         try:
             fn(args, device, out_dir / name)
             print(f"wrote {out_dir / name}")
@@ -181,6 +225,8 @@ def parse_args():
     p.add_argument("--gan-image-size", type=int, default=64)
     p.add_argument("--latent-dim", type=int, default=100)
     p.add_argument("--cam-threshold", type=float, default=0.5)
+    p.add_argument("--plantdoc-dir", type=Path, default=None, help="PlantDoc test/ folder (field Grad-CAM figure)")
+    p.add_argument("--field-samples", type=int, default=4, help="photos in the field Grad-CAM figure")
     return p.parse_args()
 
 

@@ -16,6 +16,8 @@ Expected layout under --run-dir (the folder names the notebook uses):
   baseline_apple_only/                                 4-class classifier
   cross_dataset_eval/                                  PlantVillage -> PlantDoc, Apple model
   cross_dataset_eval_full/                             PlantVillage -> PlantDoc, 38-class model
+  test_time_adaptation/                                TTA / AdaBN of the 38-class model on PlantDoc
+  baseline_full_bgrand/ cross_dataset_eval_full_bgrand/  38-class model retrained with background randomization
   incremental/                                         class-incremental results
   unet/                                                U-Net segmentation
   gan_cedar_rust/                                      DCGAN samples
@@ -41,6 +43,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.utils import figure_style as fs
+from src.utils.metrics import mcnemar
 
 # Palette: validated categorical slots + a single-hue blue ramp for magnitude.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
@@ -66,6 +69,12 @@ def load_json(path):
 
 def fmt(x):
     return f"{x:.4f}" if isinstance(x, (int, float)) else "—"
+
+
+def mcnemar_text(m):
+    """'+gained / −lost (p = x)'; p-values below 0.001 are shown as 'p < 0.001'."""
+    p = "p < 0.001" if m["p_value"] < 0.001 else f"p = {m['p_value']:.3f}"
+    return f"+{m['gained']} / −{m['lost']} ({p})"
 
 
 def bar_chart(labels, series, title, path, ylabel="Score", ylim=(0, 1.22)):
@@ -194,6 +203,77 @@ def cross_dataset_full_section(run_dir, assets, figs):
             f"| PlantDoc test (field photos) | {n} | {pd_['n_images']} | {fmt(pd_['accuracy'])} | {fmt(pd_['macro_f1'])} |\n\n"
             f"Generalization gap: **{r['accuracy_gap']:.3f}** accuracy, **{r['macro_f1_gap']:.3f}** macro-F1. "
             f"*{r.get('note', '')}*")
+
+
+TTA_METHODS = [("baseline", "No adaptation"), ("tta", "TTA (4 flips)"),
+               ("adabn", "AdaBN"), ("adabn_tta", "AdaBN + TTA")]
+
+
+def test_time_adaptation_section(run_dir, assets, figs):
+    r = load_json(run_dir / "test_time_adaptation" / "tta_results.json")
+    header = ("| Method | PlantDoc test accuracy | PlantDoc macro-F1 | Images fixed / broken vs. no adaptation "
+              "(McNemar p) | PlantVillage val accuracy |\n|---|---|---|---|---|\n")
+    if not r:
+        return header + "\n".join(f"| {label} | {NOT_RUN} | — | — | — |" for _, label in TTA_METHODS)
+    rows, labels, pd_accs, pv_accs = [], [], [], []
+    for key, label in TTA_METHODS:
+        m = r["methods"].get(key)
+        if not m:
+            continue
+        vs = m.get("plantdoc_test_vs_baseline")
+        vs_txt = mcnemar_text(vs) if vs else "—"
+        rows.append(f"| {label} | {fmt(m['plantdoc_test']['accuracy'])} | {fmt(m['plantdoc_test']['macro_f1'])} "
+                    f"| {vs_txt} | {fmt(m['plantvillage_val']['accuracy'])} |")
+        labels.append(label.replace(" + ", "\n+ ").replace(" (", "\n("))
+        pd_accs.append(m["plantdoc_test"]["accuracy"])
+        pv_accs.append(m["plantvillage_val"]["accuracy"])
+    bar_chart(labels, [("PlantDoc test (field)", pd_accs, ORANGE), ("PlantVillage val (lab)", pv_accs, BLUE)],
+              "Test-time adaptation: field vs. lab accuracy", assets / "test_time_adaptation.png",
+              ylabel="Accuracy")
+    figs.append(("test_time_adaptation.png", "Accuracy on PlantDoc and PlantVillage for each test-time method"))
+    c = r["config"]
+    return (header + "\n".join(rows) + "\n\n"
+            f"*AdaBN re-estimates BatchNorm statistics on {c['n_adaptation_images']} unlabeled PlantDoc train images "
+            f"({c['n_duplicates_excluded']} exact copies of test images excluded); model weights are unchanged. "
+            f"Scored on the same {c['n_plantdoc_test']} PlantDoc test / {c['n_plantvillage_val']} PlantVillage val "
+            f"images ({c['classes_evaluated']} classes) as above. McNemar: exact two-sided test on per-image correctness.*")
+
+
+def background_randomization_section(run_dir, assets, figs):
+    """Original 38-class model vs. the same training with leaves pasted onto random backgrounds."""
+    header = ("| Model | PlantVillage val (38 classes) | PlantVillage val (27 shared classes) | PlantDoc test accuracy "
+              "| PlantDoc macro-F1 | Images fixed / broken vs. original (McNemar p) |\n|---|---|---|---|---|---|\n")
+    rows, preds = [], {}
+    for label, train_dir, eval_dir in [("Original (lab backgrounds)", "baseline_full", "cross_dataset_eval_full"),
+                                       ("Background-randomized (DTD)", "baseline_full_bgrand",
+                                        "cross_dataset_eval_full_bgrand")]:
+        hist = load_json(run_dir / train_dir / "history.json")
+        r = load_json(run_dir / eval_dir / "cross_dataset_results.json")
+        if not hist or not r:
+            rows.append(f"| {label} | {NOT_RUN} | — | — | — | — |")
+            continue
+        best = max(hist, key=lambda h: h["macro_f1"])
+        preds[label] = {p["image"]: p["label"] == p["pred"] for p in r.get("plantdoc_predictions", [])}
+        vs = "—"
+        if label != "Original (lab backgrounds)" and preds.get("Original (lab backgrounds)") and preds[label]:
+            base = preds["Original (lab backgrounds)"]
+            common = sorted(set(base) & set(preds[label]))
+            m = mcnemar(np.array([base[k] for k in common]), np.array([preds[label][k] for k in common]))
+            vs = mcnemar_text(m)
+        pv, pd_ = r["plantvillage_in_distribution"], r["plantdoc_out_of_distribution"]
+        rows.append(f"| {label} | {fmt(best['accuracy'])} | {fmt(pv['accuracy'])} | {fmt(pd_['accuracy'])} "
+                    f"| {fmt(pd_['macro_f1'])} | {vs} |")
+    field = run_dir / "figures" / "gradcam_field.png"
+    if field.exists():
+        shutil.copy(field, assets / "gradcam_field.png")
+        figs.append(("gradcam_field.png", "Grad-CAM on PlantDoc field photos: original vs. background-randomized model"))
+    cfg = load_json(run_dir / "baseline_full_bgrand" / "config.json") or {}
+    prob = cfg.get("background_prob")
+    note = (f"*Training images had their background replaced by a random DTD texture crop with probability {prob}, "
+            f"using leaf masks from PlantVillage's background-removed copies; all other settings as the original. "
+            f"Validation and test images are unchanged. McNemar: exact two-sided test on per-image correctness on "
+            f"the same PlantDoc test images.*") if prob is not None else ""
+    return header + "\n".join(rows) + ("\n\n" + note if note else "")
 
 
 def incremental_section(run_dir, assets, figs):
@@ -368,6 +448,14 @@ def build_markdown(sections, figs, asset_prefix):
         sections["cross_full"],
         "",
         single("plantdoc_per_class.png", width="70%"),
+        "### Test-time adaptation on PlantDoc (38-class model, no retraining, no PlantDoc labels)\n",
+        sections["tta"],
+        "",
+        single("test_time_adaptation.png", width="60%"),
+        "### Background randomization (38-class model retrained with leaves on random backgrounds)\n",
+        sections["bgrand"],
+        "",
+        single("gradcam_field.png", width="80%"),
         "### Cross-dataset generalization (Apple classes, PlantVillage → PlantDoc)\n",
         sections["cross"],
         "",
@@ -435,6 +523,8 @@ def run(args):
     sections = {
         "classifier": classifier_section(run_dir, assets, figs),
         "cross_full": cross_dataset_full_section(run_dir, assets, figs),
+        "tta": test_time_adaptation_section(run_dir, assets, figs),
+        "bgrand": background_randomization_section(run_dir, assets, figs),
         "cross": cross_dataset_section(run_dir, assets, figs),
         "incremental": incremental_section(run_dir, assets, figs),
         "segmentation": segmentation_section(run_dir, assets, figs),

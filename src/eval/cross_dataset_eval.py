@@ -222,6 +222,10 @@ def run_full(args, device, out_dir):
         "accuracy_gap": pv_metrics["accuracy"] - pd_metrics["accuracy"],
         "macro_f1_gap": pv_metrics["macro_f1"] - pd_metrics["macro_f1"],
         "per_class": per_class,
+        # per-image PlantDoc predictions, so two models can be compared pairwise (McNemar) in the report
+        "plantdoc_predictions": [{"image": str(Path(path).relative_to(args.plantdoc_dir)), "label": classes[int(y)],
+                                  "pred": classes[int(pr)]}
+                                 for (path, _), y, pr in zip(pd_ds.samples, pd_labels, pd_preds)],
         "note": (f"{len(evaluated)} PlantDoc classes with a PlantVillage equivalent, {len(pd_ds)} PlantDoc "
                  f"test images; the model predicts over all {len(classes)} classes."),
     }

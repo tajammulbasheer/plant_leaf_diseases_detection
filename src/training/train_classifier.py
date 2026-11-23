@@ -40,6 +40,7 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from src.data.dataset import (
+    BackgroundSwapDataset,
     IndexedDataset,
     LeafDataset,
     PathListDataset,
@@ -58,14 +59,20 @@ def build_dataloaders(args):
     class_to_idx = {name: i for i, name in enumerate(classes)}
     use_k_shot = args.mode in ("few_shot", "semi_supervised")
 
-    train_ds = LeafDataset(
-        root=train_dir,
+    train_kwargs = dict(
         transform=default_transforms(train=True, image_size=args.image_size),
         k_shot=args.k_shot if use_k_shot else None,
         classes=classes,
         class_to_idx=class_to_idx,
         seed=args.seed,
     )
+    if args.background_dir:  # opt-in background randomization (training images only; val is untouched)
+        train_ds = BackgroundSwapDataset(train_dir, os.path.join(args.mask_dir, "train"), args.background_dir,
+                                         prob=args.background_prob, **train_kwargs)
+        print(f"Background randomization: p={args.background_prob}, {len(train_ds.backgrounds)} backgrounds "
+              f"from {args.background_dir}")
+    else:
+        train_ds = LeafDataset(root=train_dir, **train_kwargs)
     val_ds = LeafDataset(
         root=val_dir,
         transform=default_transforms(train=False, image_size=args.image_size),
@@ -301,10 +308,19 @@ def parse_args():
     p.add_argument("--resume", action="store_true",
                    help="Continue from last_checkpoint.pt in --output-dir if present "
                         "(older runs without it: from best_model.pt)")
+    p.add_argument("--background-dir", default=None,
+                   help="opt-in background randomization: folder of background images (e.g. DTD textures)")
+    p.add_argument("--mask-dir", default=None,
+                   help="leaf masks mirroring --data-dir (train/<class>/<stem>.png); required with --background-dir")
+    p.add_argument("--background-prob", type=float, default=0.8,
+                   help="probability of swapping a training image's background (with --background-dir)")
     p.add_argument("--amp", action="store_true",
                    help="Mixed-precision (fp16 autocast + GradScaler) training steps. Off by default; "
                         "validation and pseudo-label scoring always run in fp32")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.background_dir and not args.mask_dir:
+        p.error("--background-dir needs --mask-dir (leaf masks for the training images)")
+    return args
 
 
 if __name__ == "__main__":

@@ -155,6 +155,47 @@ class LeafDataset(Dataset):
 AppleLeafDataset = LeafDataset
 
 
+class BackgroundSwapDataset(LeafDataset):
+    """LeafDataset that, with probability `prob`, pastes the leaf onto a random background image before
+    the usual transform (background randomization: the lab background stops being a usable cue).
+
+    mask_root mirrors root: <mask_root>/<class>/<image stem>.png, 255 = leaf (src/data/build_leaf_masks.py).
+    Images without a mask are used unchanged. Randomness comes from torch, which DataLoader seeds per worker.
+    """
+
+    def __init__(self, root, mask_root, background_dir, prob=0.8, **kwargs):
+        super().__init__(root, **kwargs)
+        self.mask_root = Path(mask_root)
+        self.prob = prob
+        self.backgrounds = sorted(
+            str(p) for p in Path(background_dir).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png")
+        )
+        if not self.backgrounds:
+            raise RuntimeError(f"No background images found under {background_dir}.")
+
+    def _mask_path(self, path):
+        p = Path(path)
+        return self.mask_root / p.parent.name / f"{p.stem}.png"
+
+    def _composite(self, image, mask_path):
+        from PIL import ImageFilter
+
+        size = image.size
+        mask = Image.open(mask_path).convert("L").resize(size, Image.NEAREST)
+        mask = mask.filter(ImageFilter.GaussianBlur(1.5))  # feather the cut-out edge
+        bg_path = self.backgrounds[int(torch.randint(len(self.backgrounds), (1,)))]
+        background = T.RandomResizedCrop(size[::-1], scale=(0.2, 1.0))(Image.open(bg_path).convert("RGB"))
+        return Image.composite(image, background, mask)
+
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+        image = Image.open(path).convert("RGB")
+        mask_path = self._mask_path(path)
+        if float(torch.rand(1)) < self.prob and mask_path.exists():
+            image = self._composite(image, mask_path)
+        return self.transform(image), label
+
+
 class PathListDataset(Dataset):
     """Dataset over an explicit list of (image_path, label) pairs.
 

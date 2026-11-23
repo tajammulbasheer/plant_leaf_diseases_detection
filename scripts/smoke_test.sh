@@ -70,8 +70,12 @@ pd_map = {"Apple Scab Leaf": "Apple___Apple_scab", "Apple rust leaf": "Apple___C
           "Apple leaf": "Apple___healthy", "Tomato leaf": "Tomato___healthy"}
 for folder, cls in pd_map.items():
     (pd / folder).mkdir(parents=True, exist_ok=True)
+    (pd.parent / "train" / folder).mkdir(parents=True, exist_ok=True)
     for i in range(6):
         leaf(classes[cls])[0].save(pd / folder / f"{i}.jpg")
+        leaf(classes[cls])[0].save(pd.parent / "train" / folder / f"{i}.jpg")
+# one train image that is a byte-identical copy of a test image (test_time_adaptation must exclude it)
+(pd.parent / "train" / "Apple leaf" / "dup.jpg").write_bytes((pd / "Apple leaf" / "0.jpg").read_bytes())
 print("synthetic data written")
 EOF
 
@@ -119,6 +123,30 @@ step "train_classifier Apple-only"
     --mode full --epochs 2 $CLS_OPTS
 need "$R/baseline_apple_only/best_model.pt"
 
+step "build_leaf_masks (all classes, from the synthetic segmented copies)"
+"$PY" -m src.data.build_leaf_masks --repo-dir "$W/PlantVillage-Dataset" --data-dir "$D/plantvillage_full" \
+    --output-dir "$D/plantvillage_full_masks"
+[ "$(find "$D/plantvillage_full_masks" -name '*.png' | wc -l)" = 200 ]
+
+step "train_classifier with background randomization"
+"$PY" - "$SMOKE_DIR/backgrounds" <<'EOF2'
+import sys, numpy as np
+from pathlib import Path
+from PIL import Image
+out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
+rng = np.random.default_rng(0)
+for i in range(5):
+    Image.fromarray(rng.integers(0, 255, (96, 128, 3), dtype=np.uint8)).save(out / f"bg{i}.jpg")
+EOF2
+"$PY" -m src.training.train_classifier --data-dir "$D/plantvillage_full" --output-dir "$R/baseline_full_bgrand" \
+    --mode full --epochs 2 --background-dir "$SMOKE_DIR/backgrounds" --mask-dir "$D/plantvillage_full_masks" \
+    --background-prob 1.0 $CLS_OPTS | tee "$SMOKE_DIR/bgrand.txt"
+grep -q "Background randomization: p=1.0, 5 backgrounds" "$SMOKE_DIR/bgrand.txt"
+need "$R/baseline_full_bgrand/best_model.pt"
+if "$PY" -m src.training.train_classifier --data-dir "$D/plantvillage_full" --output-dir "$SMOKE_DIR/should_fail" \
+    --background-dir "$SMOKE_DIR/backgrounds" > "$SMOKE_DIR/no_masks.txt" 2>&1; then echo "expected failure"; false; fi
+grep -q "needs --mask-dir" "$SMOKE_DIR/no_masks.txt"
+
 step "train_segmentation"
 "$PY" -m src.training.train_segmentation --images-dir "$D/seg/images" --masks-dir "$D/seg/masks" \
     --output-dir "$R/unet" --epochs 2 --batch-size 4 --image-size 128 \
@@ -151,6 +179,21 @@ need "$R/cross_dataset_eval_full/cross_dataset_results.json" "$R/cross_dataset_e
 # the fake PlantDoc set has 4 mapped folders (3 Apple + Tomato leaf), 6 images each
 [ "$("$PY" -c "import json;r=json.load(open('$R/cross_dataset_eval_full/cross_dataset_results.json'));print(r['classes_evaluated'], r['plantdoc_out_of_distribution']['n_images'])")" = "4 24" ]
 
+step "test_time_adaptation (TTA / AdaBN on PlantDoc)"
+"$PY" -m src.eval.test_time_adaptation --checkpoint "$R/baseline_full/best_model.pt" \
+    --plantdoc-root "$(dirname "$PD")" --plantvillage-val-dir "$D/plantvillage_full/val" \
+    --output-dir "$R/test_time_adaptation" --image-size 64 --batch-size 8 \
+    $(opt src.eval.test_time_adaptation "--num-workers $NW")
+need "$R/test_time_adaptation/tta_results.json"
+# 24 train images + 1 duplicate of a test image, which must be the one excluded
+[ "$("$PY" -c "import json;c=json.load(open('$R/test_time_adaptation/tta_results.json'))['config'];print(c['n_adaptation_images'], c['n_duplicates_excluded'])")" = "24 1" ]
+
+step "cross_dataset_eval --subset full on the background-randomized model"
+"$PY" -m src.eval.cross_dataset_eval --subset full --checkpoint "$R/baseline_full_bgrand/best_model.pt" \
+    --plantvillage-val-dir "$D/plantvillage_full/val" --plantdoc-dir "$PD" --output-dir "$R/cross_dataset_eval_full_bgrand" \
+    --image-size 64 --batch-size 8 $(opt src.eval.cross_dataset_eval "--num-workers $NW")
+[ "$("$PY" -c "import json;print(len(json.load(open('$R/cross_dataset_eval_full_bgrand/cross_dataset_results.json'))['plantdoc_predictions']))")" = 24 ]
+
 step "pseudo_boxes (Grad-CAM)"
 "$PY" -m src.interpretability.pseudo_boxes --checkpoint "$R/baseline_apple_only/best_model.pt" \
     --data-dir "$D/apple/val" --output-dir "$R/gradcam_boxes" --num-samples 4 --image-size 64
@@ -163,15 +206,20 @@ step "train_incremental"
 need "$R/incremental/incremental_results.json"
 
 step "make_figures (README sample figures from the checkpoints)"
-"$PY" -m src.utils.make_figures --run-dir "$R" --data-dir "$D" --image-size 64 --seg-image-size 128
-need "$R/figures/seg_samples.png" "$R/figures/gradcam_comparison.png" "$R/figures/gan_real_vs_generated.png"
+"$PY" -m src.utils.make_figures --run-dir "$R" --data-dir "$D" --image-size 64 --seg-image-size 128 --plantdoc-dir "$PD"
+need "$R/figures/seg_samples.png" "$R/figures/gradcam_comparison.png" "$R/figures/gan_real_vs_generated.png" \
+    "$R/figures/gradcam_field.png"
 
 step "generate_report (README copy, never the real README)"
 cp README.md "$SMOKE_DIR/README.copy.md"
 "$PY" -m src.utils.generate_report --run-dir "$R" --output-dir "$R/report" \
     --assets-dir "$SMOKE_DIR/assets" --readme "$SMOKE_DIR/README.copy.md"
 need "$R/report/RESULTS.md" "$SMOKE_DIR/assets/classifier_modes.png" "$SMOKE_DIR/assets/incremental_combined.png" \
-    "$SMOKE_DIR/assets/plantdoc_per_class.png" "$SMOKE_DIR/assets/gradcam_comparison.png"
+    "$SMOKE_DIR/assets/plantdoc_per_class.png" "$SMOKE_DIR/assets/gradcam_comparison.png" \
+    "$SMOKE_DIR/assets/test_time_adaptation.png" "$SMOKE_DIR/assets/gradcam_field.png"
+grep -q "Images fixed / broken vs. original" "$SMOKE_DIR/README.copy.md"
+if grep -A4 "Background randomization (38-class" "$SMOKE_DIR/README.copy.md" | grep -q "not run yet"; then
+    echo "background randomization section not filled"; false; fi
 grep -q "RESULTS:START" "$SMOKE_DIR/README.copy.md"
 if grep -q "not run yet" "$SMOKE_DIR/README.copy.md"; then echo "report still has not-run sections"; false; fi
 [ "$(guard_sum)" = "$GUARD" ] || { echo "smoke test modified the real README.md or assets/"; false; }
